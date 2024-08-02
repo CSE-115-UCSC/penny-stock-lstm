@@ -18,25 +18,31 @@ import numpy as np
 from time import time, strftime
 
 class PennyStockData:
-
-    __dataset_types = ['csv', 'numpy_sequence']
     
-    def __init__(self, database_name_with_path, table_name, return_data_as='csv', verbose=0):
+    def __init__(self, database_name_with_path, table_name, drop_discrete_columns=True, impute=True, row_data_threshold=12, format='csv', verbose=0):
         ## Extract
         #assert (database_name_with_path and database_name_with_path.strip()) == ""
         #assert (table_name and table_name.strip()) == ""
 
         self.verbose = verbose
-        self.data_format = return_data_as
         self.path = self.file_exists(database_name_with_path)
+        self.drop_discrete_columns = drop_discrete_columns
+        self.impute = impute
+        self.row_data_threshold = row_data_threshold
+        self.format = format
         
         self.sqliteConnection, self.cursor = self.connect_db()
         self.table_name = table_name
+        
         self.data, self.headers, self.size = self.load_data()
 
         self.tickers = self.get_tickers()
 
-        self.dataset = self.as_numpy(impute=True, row_data_threshold=25)
+        self.data = self.get_imputed()
+
+        self.size = len(self.data)
+        
+        self.numpy_sequence = self.as_numpy_sequence()
 
         #self.data = self.process_data()
         #if (self.data_format == 'numpy_sequence'):
@@ -61,61 +67,80 @@ class PennyStockData:
         
     #    return data
 
-    def as_numpy(self, impute=True, row_data_threshold=25):
-        # let's create the dataset
-        all_historical_dataset = list()
-        ticker_dates_list = list()
-        ticker_date_data_list = list()
+    def get_imputed(self):
+        if not(self.impute):
+            return self.data
         
-        dataset = list()
-        #uncompressed_dataset = list()
+        data = self.data
 
-        tickers_list = self.tickers
-        ticker_data = list()
-        for ticker in tickers_list:
-            #print(ticker)
-            ticker_query = "select distinct(p_date) as ticker_date from " + self.table_name + " where ticker_id=" + (str)(ticker[0]) + " order by ticker_date;"
-            self.cursor.execute(ticker_query)
-            ticker_dates_list = [list(j) for j in self.cursor.fetchall()]
-            date_data = list()
-            for ticker_date in ticker_dates_list:
-                #print(f'ticker_date {ticker_date[0]}')
-                ticker_date_query = "SELECT p_time, volume, volume_weighted_average, open, close, high, low, time, number_of_trades FROM " + self.table_name + " WHERE ticker_id=" + (str)(ticker[0]) + " and p_date = '" + ticker_date[0] + "' ORDER BY p_time;"
-                #ticker_date_query = "select strftime('%H:%M', time/1000, 'unixepoch') as ticker_time, volume, volume_weighted_average, time from all_historical where ticker='" + ticker + "' and strftime('%Y-%m-%d', time/1000, 'unixepoch') = '" + ticker_date + "' order by ticker_time;" 
-                self.cursor.execute(ticker_date_query)
-                ticker_date_data_list = [list(k) for k in self.cursor.fetchall()]
-                row_data = list()
-                for ticker_date_data_row in ticker_date_data_list:
-                    # avoid adding data that has zero records or less than 60% from a day (25.2/42 records, starting at 4:30 ending at 8:00)
-                    if (len(ticker_date_data_list) > row_data_threshold):
-                        ticker_date_data_row_0 = ticker_date_data_row[0].replace(":","")
-                        row_data.append(((int)(ticker_date_data_row_0), (int)(ticker_date_data_row[1]), (float)(ticker_date_data_row[2]), (float)(ticker_date_data_row[2]), (float)(ticker_date_data_row[3]), (float)(ticker_date_data_row[4]), (float)(ticker_date_data_row[5]), (float)(ticker_date_data_row[6]), (int)(ticker_date_data_row[7]), (int)(ticker_date_data_row[8])))
-                    ## if impute
-                    else:
-                        if self.verbose == 2:
-                            print(f'[DEBUG][PennyStockData]: dropping data ({ticker[0]}, {ticker_date[0]}) rows={len(ticker_date_data_list)} is < row_data_threshold: {row_data_threshold}')
-                        break
+        #ticker_id_list = list()
+        no_of_records = len(data)
+        row_length = len(data[0])
+        t_data = np.transpose(data)
+        new_column = np.zeros((no_of_records, 1))
+        # First row
+        time_diff = 0
+        data[0].append(time_diff)
+        
+        for row_index in range(no_of_records-1):
+            
+            if (data[row_index][1] == data[row_index+1][1] and data[row_index][3] == data[row_index+1][3]):
+                time_diff = ((int)(data[row_index+1][10]) - (int)(data[row_index][10]))/(1000 * 60)  # in mins
+            else:
+                time_diff = 0
+            data[row_index+1].append(time_diff)
+        self.headers.append('time-diff')
+
+        # ToDo:
+        ## for each row, loop and insert data
+        ## tip: use the previous loop
+
+        ## consider force refusing impute when discrete fields (i.e. volume, number_of_sales) are in the column_list
+        ## i.e. if drop_discrete_columns == False, do not allow imputing (as we only add missing 5th minute data to rows)
+        
+        return data
+
+    def as_numpy_sequence(self):
+        if (self.format == 'csv'):
+            return self.data
+        elif (self.format == 'numpy_sequence'):
+            tickers = np.array(self.tickers)
+            t_data = np.transpose(self.data)
+            data = np.array(self.data)
+            tickers_data = {}
+
+            ## The idea is to create an array such that dataset has structure [ticker_id][p_date][(col0, col1, col2, ..., coln),(col0, col1, col2, ..., coln)]
+            ## here (col0, col1, col2, ..., coln) is the sequence data as a list of tuples from each row having 5 mins interval data 
+            ## (refer imputing for missing data)
+
+            for ticker in tickers:
+                ticker_indices = np.where(t_data[1] == (str)(ticker[0]))
+                ticker_data = data[ticker_indices]
+                ticker_dates = np.unique(ticker_data[:,3])
+            
+                ticker_dates_data = {}
                 
-                #if (len(row_data) > row_data_threshold):
-                date_data.append((ticker[0], ticker_date[0], row_data))
+                for ticker_date in ticker_dates:
+                    ticker_date_indices = np.where(ticker_data[:,3] == (str)(ticker_date))
+                    ticker_date_data = data[ticker_date_indices]
+                    
+                    ticker_dates_data[ticker_date] = ticker_date_data
+                tickers_data[ticker[0]] = ticker_dates_data
 
-                    #with open(csv_filename, 'a', newline='') as file:
-                    #    csvwriter = csv.writer(file)
-                    #    csvwriter.writerow((ticker[0], ticker_date[0], row_data, row_label))
-                    #file.close()
-            ticker_data.append((date_data))
-        #print(ticker_data)
-        dataset = ticker_data
-
-        if self.verbose >= 1:
-            print(f'[INFO][PennyStockData]: Records have been numpied successfully on the variable dataset')
-        return dataset
-
+            dataset = tickers_data
+            
+            if self.verbose >= 1:
+                print(f'[INFO][PennyStockData]: Records have been numpied successfully on the variable dataset')
+            return dataset
+            
+        else:
+            raise ValueError('[ERROR][PennyStockData]: {} should either be csv or numpy_sequence.'.format(self.format))
+    
     def __len__(self):
         return len(self.data)
 
-    def impute(self):
-        return self.data
+    #def impute(self):
+    #    return self.data
 
     def get_tickers(self):
         tickers = []
@@ -162,7 +187,10 @@ class PennyStockData:
         size = 0
         # Execute query
         try:
-          query = "SELECT ROWID, ticker_id, ticker, p_date, p_time, volume, volume_weighted_average, open, close, high, low, time, number_of_trades FROM " + self.table_name + " WHERE 1 ORDER BY ticker_id, p_date, p_time"
+          discrete_columns = ""
+          if (not(self.drop_discrete_columns)):
+            discrete_columns = ", volume, number_of_trades"
+          query = "SELECT ROWID, ticker_id, ticker, p_date, p_time, volume_weighted_average, open, close, high, low, time" + discrete_columns + " FROM " + self.table_name + " WHERE 1 ORDER BY ticker_id, p_date, p_time"
           self.cursor.execute(query)
           if self.verbose >= 1:
             print(f'[INFO][PennyStockData]: SQlite executed query {query}')
@@ -176,7 +204,7 @@ class PennyStockData:
 
           if self.verbose == 2:
             print(f'[DEBUG][PennyStockData]: headers: {headers}')
-            print(f'[DEBUG][PennyStockData]: len(data): > {size}')
+            print(f'[DEBUG][PennyStockData]: len(data): {size}')
         except:
           sys.stderr.write("[ERROR][PennyStockData]: Failed to execute query")
 
@@ -238,4 +266,62 @@ class PennyStockData:
                         #uncompressed_dataset.append((ticker[0], ticker_date[0], (int)(ticker_date_data_row_0), (float)(ticker_date_data_row[1]), (float)(ticker_date_data_row[2])))
                     #print(row_data)
                     #exit(1)
+
+
+############################### numpy_sequence - old_code
+
+# let's create the dataset
+            all_historical_dataset = list()
+            ticker_dates_list = list()
+            ticker_date_data_list = list()
+            
+            dataset = None
+            #uncompressed_dataset = list()
+    
+            tickers_list = self.tickers
+            ticker_data = None
+            for ticker in tickers_list:
+                #print(ticker)
+                ticker_query = "select distinct(p_date) as ticker_date from " + self.table_name + " where ticker_id=" + (str)(ticker[0]) + " order by ticker_date;"
+                self.cursor.execute(ticker_query)
+                ticker_dates_list = [list(j) for j in self.cursor.fetchall()]
+                date_data = None
+                for ticker_date in ticker_dates_list:
+                    discrete_columns = ""
+                    if (not(self.drop_discrete_columns)):
+                        discrete_columns = ", volume, number_of_trades"
+                    ticker_date_query = "SELECT p_time, volume_weighted_average, open, close, high, low, time" + discrete_columns +" FROM " + self.table_name + " WHERE ticker_id=" + (str)(ticker[0]) + " and p_date = '" + ticker_date[0] + "' ORDER BY p_time;"
+                    self.cursor.execute(ticker_date_query)
+                    ticker_date_data_list = [list(k) for k in self.cursor.fetchall()]
+                    row_data = list()
+                    for ticker_date_data_row in ticker_date_data_list:
+                        # avoid adding data that has zero records or less than 60% from a day (25.2/42 records, starting at 4:30 ending at 8:00)
+                        if (len(ticker_date_data_list) > self.row_data_threshold):
+                            ticker_date_data_row_0 = ticker_date_data_row[0].replace(":","")
+                            row_data.append((ticker_date_data_row))
+                        ## if impute
+                        else:
+                            if self.verbose == 2:
+                                print(f'[DEBUG][PennyStockData]: dropping data ({ticker[0]}, {ticker_date[0]}) rows={len(ticker_date_data_list)} is < row_data_threshold: {self.row_data_threshold}')
+                            break
+                    
+                        #if (len(row_data) > row_data_threshold):
+                    row_data = np.array(row_data)
+                    date_data[ticker_date[0]] = row_data
+    
+                        #with open(csv_filename, 'a', newline='') as file:
+                        #    csvwriter = csv.writer(file)
+                        #    csvwriter.writerow((ticker[0], ticker_date[0], row_data, row_label))
+                        #file.close()
+                    
+                ticker_data[ticker[0]] = date_data
+                #print(ticker_data)
+            dataset = ticker_data
+            #dataset = ticker_data
+    
+            if self.verbose >= 1:
+                print(f'[INFO][PennyStockData]: Records have been numpied successfully on the variable dataset')
+            return dataset
+
+
 '''
