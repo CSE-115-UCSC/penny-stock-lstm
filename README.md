@@ -1,5 +1,7 @@
-# PyTorch Template Project
-PyTorch deep learning project made easy.
+# PennyStockLSTM Project
+> forked from [PyTorch Template Project](https://github.com/victoresque/pytorch-template) by victoresque
+
+`PyTorch 2 deep learning project for otc stocks.`
 
 <!-- @import "[TOC]" {cmd="toc" depthFrom=1 depthTo=6 orderedList=false} -->
 
@@ -32,11 +34,11 @@ PyTorch deep learning project made easy.
 
 <!-- /code_chunk_output -->
 
-## Requirements
-* Python >= 3.5 (3.6 recommended)
-* PyTorch >= 0.4 (1.2 recommended)
+## Requirements (as we are using for the project)
+* Python == 3.11.9
+* PyTorch == 2.4 (1.2 recommended) by original author
 * tqdm (Optional for `test.py`)
-* tensorboard >= 1.14 (see [Tensorboard Visualization](#tensorboard-visualization))
+* tensorboard >= 2.16 (see [Tensorboard Visualization](#tensorboard-visualization))
 
 ## Features
 * Clear folder structure which is suitable for many deep learning projects.
@@ -101,7 +103,7 @@ Config files are in `.json` format:
 ```javascript
 {
   "name": "Mnist_LeNet",        // training session name
-  "n_gpu": 1,                   // number of GPUs to use for training.
+  "n_gpu": 0,                   // number of GPUs to use for training.
   
   "arch": {
     "type": "MnistModel",       // name of model architecture to train
