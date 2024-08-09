@@ -24,7 +24,7 @@ class Aggregates():
         self.ticker = ticker
         self.api_key = key
 
-        self.start_date = "2023-01-09"
+        self.start_date = "2022-01-09"
         self.end_date = "2024-01-09"
         self.multipler = 5
         self.timespan = "minute"
