@@ -14,31 +14,145 @@
 import csv, os, sys
 import sqlite3
 import numpy as np
-from sklearn.preprocessing import MinMaxScaler
-
+import pandas as pd
 from time import time, strftime, gmtime
 
-class PennyStockData:
-    
-    def __init__(self, database_name_with_path, table_name, impute=True, format='csv', verbose=0):
-        ## Extract
-        #assert (database_name_with_path and database_name_with_path.strip()) == ""
-        #assert (table_name and table_name.strip()) == ""
+from sklearn.preprocessing import MinMaxScaler
 
+class PennyStockData():
+    
+    def __init__(self, database_name_with_path, table_name, impute=True, verbose=0):
         self.verbose = verbose
         self.path = self.file_exists(database_name_with_path)
         
         self.impute = impute
-        self.format = format
         
         self.sqliteConnection, self.cursor = self.connect_db()
         self.table_name = table_name
         
         self.data, self.headers, self.size = self.load_data()
-        self.tickers = self.get_tickers()
-        self.data = self.get_imputed()
+        self.tickers = self.get_all_tickers()
+        self.selected_tickers = self.get_selected_tickers()
         
+        self.data = self.get_imputed()
 
+        self.xs = None
+        self.ys = None
+
+    def create_sequences(self, sequence_length=78, prediction_length=78):
+        xs, ys = [], []
+        index = 0
+        count = 0
+        
+        data_df = pd.DataFrame(self.normalized_data, columns=self.normalized_headers)
+        data = data_df[self.columns_to_normalize].values.tolist()
+        #data = data.values.tolist()
+        
+        tickers = self.ds_tickers
+        dates = self.ds_dates
+        
+        while index < len(data) - sequence_length - prediction_length + 1:
+            # Check if sequence is within a single day
+            if dates[index] == dates[index + sequence_length] and tickers[index] == tickers[index + sequence_length]:
+                # If day == 2024-05-31, print
+                # if dates[index] == "2024-05-31":
+                # print("We got a sequence from", dates[index], "to", dates[index + sequence_length], "sequence-length is", (index + sequence_length) -index, tickers[index], tickers[index + sequence_length])
+                xs.append(data[index:index + sequence_length])
+                ys.append(data[index + sequence_length:index + sequence_length + prediction_length])
+                index += sequence_length
+                count += 1
+            else:  # Move index to the start of the next day
+                newindex = index
+                while dates[newindex] == dates[newindex + 1]:
+                    newindex += 1
+                newindex += 1
+                index = newindex
+        #print("Valid days:", count)
+
+        self.xs = np.array(xs)
+        self.ys = np.array(ys)
+
+        #self.data = data
+
+        self.sequence_length = sequence_length
+        self.prediction_length = prediction_length
+        
+        return self
+    
+    def normalize(self, columns_to_normalize=[]):
+        if (len(columns_to_normalize) == 0):
+            print(f'[INFO][PennyStockData]: No columns were supplied to be normalized {columns_to_normalize}. Provide columns as a list in columns_to_normalize')
+            return self
+
+        if (self.verbose == 2):
+            print(f'[INFO][PennyStockData]: Performing ticker-wise normalization on {columns_to_normalize}')
+
+        ## Storing original data and headers
+        #self.o_data = self.data
+        #self.o_headers = self.headers
+        
+        normalized_data = pd.DataFrame()
+        # First we normalize by each ticker as tickerwise, the wva differs a lot
+        dfx = pd.DataFrame(self.data, columns=self.headers)
+        
+        data_by_ticker = {}
+        for ticker in self.get_selected_tickers():
+            data_by_ticker[ticker] = dfx[dfx['ticker_id'] == ticker].copy()
+            for ctn in columns_to_normalize:
+                if ctn in dfx.columns:
+                    data_by_ticker[ticker][ctn] = (data_by_ticker[ticker][ctn] / data_by_ticker[ticker][ctn].max()) ## doing inplace
+    
+        for ticker in data_by_ticker:
+            # create a temporary DataFrame to hold the current data
+            temp_df = pd.DataFrame(data_by_ticker[ticker].values.tolist(), columns=data_by_ticker[ticker].keys().tolist())
+            normalized_data = pd.concat([normalized_data, temp_df], axis=0, ignore_index=True)
+    
+        # optionally, you can reset the index if needed
+        normalized_data.reset_index(drop=True, inplace=True)
+
+        if (self.verbose == 2):
+            print(f'[INFO][PennyStockData]: Performing global normalization on {columns_to_normalize} using MixMaxScaler')
+        
+        scaler = MinMaxScaler(feature_range=(0,1))
+        normalized_data[columns_to_normalize] = scaler.fit_transform(normalized_data[columns_to_normalize])
+
+        self.ds_tickers = normalized_data['ticker_id'].values.tolist()
+        self.ds_dates = normalized_data['p_date'].values.tolist()
+        self.ds_times = normalized_data['p_time'].values.tolist()
+
+        normalized_data = normalized_data.drop(columns=['ticker_id'])
+        normalized_data.reset_index(drop=True, inplace=True)
+        
+        self.normalized_data = normalized_data.values.tolist()
+        self.normalized_headers = normalized_data.columns.tolist()
+
+        self.columns_to_normalize = columns_to_normalize
+
+        self.scaler = scaler
+        
+        return self
+
+    def get_headers(self):
+        return self.headers
+
+    def get_columns(self, columns_as_list=[]):
+        if (len(columns_as_list) == 0):
+            return self.data
+        
+        df = pd.DataFrame(self.data, columns=self.headers)
+        to_df = df[columns_as_list]
+        
+        self.data = to_df.values.tolist()
+        
+        to_headers = to_df.columns
+        self.headers = to_headers.tolist()
+        
+        return self
+
+    def get_selected_tickers(self):
+        df = pd.DataFrame(self.data, columns=self.headers)
+
+        return df["ticker_id"].unique().tolist()
         
     def get_imputed(self):
         if not(self.impute):
@@ -91,9 +205,75 @@ class PennyStockData:
             
         headers.append('time-diff')
         self.headers = headers
+
+        print(f'[DEBUG][PennyStockData]: Imputed len(data): {len(imputed_data)}')
         
         return imputed_data
 
+    def __len__(self):
+        return len(self.data)
+
+    def get_all_tickers(self):
+        tickers = []
+        try:
+          query = "SELECT id, ticker FROM tickers WHERE id<>30 ORDER BY id"
+          self.cursor.execute(query)
+          if self.verbose >= 1:
+            print(f'[INFO][PennyStockData]: SQlite executed query {query}')
+          
+          tickers = [list(i) for i in self.cursor.fetchall()]
+        except:
+          sys.stderr.write("[ERROR][PennyStockData]: Failed to execute query")
+        return tickers
+        
+    def __getitem__(self, idx):
+        return self.data[idx]
+        
+    # Connect to SQlite database
+    def connect_db(self):
+        cursor = None
+        try:
+          sqliteConnection = sqlite3.connect(self.path)
+          cursor = sqliteConnection.cursor()
+          if self.verbose >= 1:
+            print(f'[INFO][PennyStockData]: SQlite connected with {self.path}')          
+        except:
+          raise Error('[ERROR][PennyStockData]: Failed to connect with {}.'.format(self.path))
+        return sqliteConnection, cursor
+
+    def load_data(self):
+        data = []
+        headers = []
+        size = 0
+        # Execute query
+        try:
+          query = "SELECT ticker_id, ticker, p_date, p_time, volume_weighted_average, open, close, high, low, time/1000 as time, volume, number_of_trades FROM " + self.table_name + " WHERE ticker_id<>30 ORDER BY ticker_id, p_date, p_time"
+          self.cursor.execute(query)
+          if self.verbose >= 1:
+            print(f'[INFO][PennyStockData]: SQlite executed query {query}')
+          
+          data = [list(i) for i in self.cursor.fetchall()]
+          headers = list(map(lambda x: x[0], self.cursor.description))
+          size = len(data)
+
+          if self.verbose == 2:
+            print(f'[DEBUG][PennyStockData]: headers: {headers}')
+            print(f'[DEBUG][PennyStockData]: len(data): {size}')
+        except:
+          sys.stderr.write("[ERROR][PennyStockData]: Failed to execute query")
+
+        return data, headers, size
+
+    # Private valid file checker
+    def file_exists(self, path):
+        if os.path.isfile(path):
+            if self.verbose >= 1:
+                print("[INFO][PennyStockData]:", path, "exists")
+            return path
+        else:
+            raise FileNotFoundError('[ERROR][PennyStockData]: {} is not found.'.format(path))
+
+'''
     def as_numpy_sequence(self):
         if (self.format == 'csv'):
             return self.data
@@ -129,70 +309,4 @@ class PennyStockData:
             
         else:
             raise ValueError('[ERROR][PennyStockData]: {} should either be csv or numpy_sequence.'.format(self.format))
-    
-    def __len__(self):
-        return len(self.data)
-
-    def get_tickers(self):
-        tickers = []
-        try:
-          query = "SELECT id, ticker FROM tickers WHERE 1 ORDER BY id"
-          self.cursor.execute(query)
-          if self.verbose >= 1:
-            print(f'[INFO][PennyStockData]: SQlite executed query {query}')
-          
-          tickers = [list(i) for i in self.cursor.fetchall()]
-        except:
-          sys.stderr.write("[ERROR][PennyStockData]: Failed to execute query")
-        return tickers
-        
-    def __getitem__(self, idx):
-        return self.data[idx]
-        
-    # Connect to SQlite database
-    def connect_db(self):
-        cursor = None
-        try:
-          sqliteConnection = sqlite3.connect(self.path)
-          cursor = sqliteConnection.cursor()
-          if self.verbose >= 1:
-            print(f'[INFO][PennyStockData]: SQlite connected with {self.path}')          
-        except:
-          raise Error('[ERROR][PennyStockData]: Failed to connect with {}.'.format(self.path))
-        return sqliteConnection, cursor
-
-    def load_data(self):
-        data = []
-        headers = []
-        size = 0
-        # Execute query
-        try:
-          query = "SELECT ticker_id, ticker, p_date, p_time, volume_weighted_average, open, close, high, low, time/1000 as time, volume, number_of_trades FROM " + self.table_name + " WHERE 1 ORDER BY ticker_id, p_date, p_time"
-          self.cursor.execute(query)
-          if self.verbose >= 1:
-            print(f'[INFO][PennyStockData]: SQlite executed query {query}')
-          #data = pd.read_sql_query(query, self.sqliteConnection)
-          #headers = data.columns
-          #size = len(data)
-          
-          data = [list(i) for i in self.cursor.fetchall()]
-          headers = list(map(lambda x: x[0], self.cursor.description))
-          size = len(data)
-
-          if self.verbose == 2:
-            print(f'[DEBUG][PennyStockData]: headers: {headers}')
-            print(f'[DEBUG][PennyStockData]: len(data): {size}')
-        except:
-          sys.stderr.write("[ERROR][PennyStockData]: Failed to execute query")
-
-        return data, headers, size
-
-    # Private valid file checker
-    def file_exists(self, path):
-        if os.path.isfile(path):
-            if self.verbose >= 1:
-                print("[INFO][PennyStockData]:", path, "exists")
-            return path
-        else:
-            raise FileNotFoundError('[ERROR][PennyStockData]: {} is not found.'.format(path))
-
+'''
