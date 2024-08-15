@@ -24,7 +24,7 @@ class PennyStockModeler(nn.Module):
     # input_size : number of features in input at each time step
     # hidden_size : Number of LSTM units 
     # num_layers : number of LSTM layers 
-    def __init__(self, input_size, hidden_size, num_layers, device='cpu'): 
+    def __init__(self, input_size, hidden_size, num_layers, device='cpu') -> None: 
         super(PennyStockModeler, self).__init__() #initializes the parent class nn.Module
         self.device = device
         if device=='cuda':
@@ -33,11 +33,6 @@ class PennyStockModeler(nn.Module):
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True) #.to(self.device)
         self.linear = nn.Linear(hidden_size, 1)
 
-        self.x = None
-        self.y = None
-
-        self.num_epochs = None
-        
     def forward(self, x): # defines forward pass of the neural network       
         out, _ = self.lstm(x)
         out = self.linear(out)
@@ -108,15 +103,17 @@ class PennyStockModeler(nn.Module):
     def split_dataset(self, psd, split=0.8, to_torch=True):
         ##
         self.psd = psd
-        self.x = psd.xs
-        self.y = psd.ys
+        x, y = psd.xs, psd.ys
 
         #self.train_data, self.test_data = self.psd.o_data[:train_size], self.psd.o_data[train_size:]
         
-        train_size = int(len(self.x) * split)
+        train_size = int(len(x) * split)
     
-        x_train, x_test = self.x[:train_size], self.x[train_size:]
-        y_train, y_test = self.y[:train_size], self.y[train_size:]
+        x_train, x_test = x[:train_size], x[train_size:]
+        y_train, y_test = y[:train_size], y[train_size:]
+        #np.array
+        print(f'x_train.shape: {x_train.shape}, y_train.shape: {y_train.shape}')
+        print(f'x_test.shape: {x_test.shape}, y_test.shape: {y_test.shape}')
     
         if to_torch:
             x_train = torch.tensor(x_train, dtype=torch.float32)
@@ -124,8 +121,8 @@ class PennyStockModeler(nn.Module):
             x_test = torch.tensor(x_test, dtype=torch.float32)
             y_test = torch.tensor(y_test, dtype=torch.float32)
 
-        print(f'x_train.shape: {x_train.shape}, y_train.shape: {y_train.shape}')
-        print(f'x_test.shape: {x_test.shape}, y_test.shape: {y_test.shape}')
+        #print(f'x_train.shape: {x_train.shape}, y_train.shape: {y_train.shape}')
+        #print(f'x_test.shape: {x_test.shape}, y_test.shape: {y_test.shape}')
         
         self.x_train = x_train
         self.x_test = x_test
