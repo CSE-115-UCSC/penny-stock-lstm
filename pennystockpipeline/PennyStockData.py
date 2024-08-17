@@ -80,8 +80,10 @@ class PennyStockData():
         return self
     
     def normalize(self, columns_to_normalize=[]):
+        print("Normalizing...")
         if (len(columns_to_normalize) == 0):
             print(f'[INFO][PennyStockData]: No columns were supplied to be normalized {columns_to_normalize}. Provide columns as a list in columns_to_normalize')
+            print("Returning early")
             return self
 
         if (self.verbose == 2):
@@ -91,30 +93,40 @@ class PennyStockData():
         #self.o_data = self.data
         #self.o_headers = self.headers
         
-        normalized_data = pd.DataFrame()
+        # normalized_data = pd.DataFrame()
         # First we normalize by each ticker as tickerwise, the wva differs a lot
-        dfx = pd.DataFrame(self.data, columns=self.headers)
-        
+            
+        # Create a scaler for every stock
+        scalers = {}
         data_by_ticker = {}
+        normalized_data = pd.DataFrame()
+        dfx = pd.DataFrame(self.data, columns=self.headers)
         for ticker in self.get_selected_tickers():
-            data_by_ticker[ticker] = dfx[dfx['ticker_id'] == ticker].copy()
-            for ctn in columns_to_normalize:
-                if ctn in dfx.columns:
-                    data_by_ticker[ticker][ctn] = (data_by_ticker[ticker][ctn] / data_by_ticker[ticker][ctn].max()) ## doing inplace
-    
-        for ticker in data_by_ticker:
-            # create a temporary DataFrame to hold the current data
+            
+            # Separate data by ticker and then by column
+            data_by_ticker[ticker] = dfx[dfx['ticker_id'] == ticker].copy() # Shape is (40840, 4)
+            data_to_normalize = data_by_ticker[ticker][columns_to_normalize]
+
+
+            
+            # Scale the selected columns individually based on ticker
+            scalers[ticker] = MinMaxScaler(feature_range=(0,1)) 
+            normalized_column_data = scalers[ticker].fit_transform(data_to_normalize)
+            
+            # Reinsert the normalized data into the table
+            data_by_ticker[ticker][columns_to_normalize] = normalized_column_data
             temp_df = pd.DataFrame(data_by_ticker[ticker].values.tolist(), columns=data_by_ticker[ticker].keys().tolist())
             normalized_data = pd.concat([normalized_data, temp_df], axis=0, ignore_index=True)
-    
+
         # optionally, you can reset the index if needed
         normalized_data.reset_index(drop=True, inplace=True)
+        
 
         if (self.verbose == 2):
             print(f'[INFO][PennyStockData]: Performing global normalization on {columns_to_normalize} using MixMaxScaler')
         
-        scaler = MinMaxScaler(feature_range=(0,1))
-        normalized_data[columns_to_normalize] = scaler.fit_transform(normalized_data[columns_to_normalize])
+
+        # normalized_data[columns_to_normalize] = scaler[].fit_transform(normalized_data[columns_to_normalize])
 
         self.ds_tickers = normalized_data['ticker_id'].values.tolist()
         self.ds_dates = normalized_data['p_date'].values.tolist()
@@ -128,7 +140,7 @@ class PennyStockData():
 
         self.columns_to_normalize = columns_to_normalize
 
-        self.scaler = scaler
+        self.scaler = scalers # Change -> Array
         
         return self
 
