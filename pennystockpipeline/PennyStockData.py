@@ -19,6 +19,8 @@ from time import time, strftime, gmtime
 
 from sklearn.preprocessing import MinMaxScaler
 
+import torch # Library for implementing Deep Neural Network 
+
 class PennyStockData():
     
     def __init__(self, database_name_with_path, table_name, impute=True, verbose=0) -> None:
@@ -26,6 +28,35 @@ class PennyStockData():
         
         self.__load_data(database_name_with_path, table_name, impute)
         self.scaler = MinMaxScaler(feature_range=(0,1))
+
+    def split_dataset(self, split=0.8, to_torch=True):
+        x, y = self.xs, self.ys
+
+        #self.train_data, self.test_data = self.psd.o_data[:train_size], self.psd.o_data[train_size:]
+        
+        train_size = int(len(x) * split)
+    
+        x_train, x_test = x[:train_size], x[train_size:]
+        y_train, y_test = y[:train_size], y[train_size:]
+        #np.array
+        print(f'x_train.shape: {x_train.shape}, y_train.shape: {y_train.shape}')
+        print(f'x_test.shape: {x_test.shape}, y_test.shape: {y_test.shape}')
+    
+        if to_torch:
+            x_train = torch.tensor(x_train, dtype=torch.float32)
+            y_train = torch.tensor(y_train, dtype=torch.float32)
+            x_test = torch.tensor(x_test, dtype=torch.float32)
+            y_test = torch.tensor(y_test, dtype=torch.float32)
+
+        #print(f'x_train.shape: {x_train.shape}, y_train.shape: {y_train.shape}')
+        #print(f'x_test.shape: {x_test.shape}, y_test.shape: {y_test.shape}')
+        
+        self.x_train = x_train
+        self.x_test = x_test
+        self.y_train = y_train
+        self.y_test = y_test
+        
+        return self
 
     def create_sequences(self, sequence_length=36, prediction_length=36):
         xs, ys = [], []

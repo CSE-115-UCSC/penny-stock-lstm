@@ -18,14 +18,16 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 
+from sklearn.preprocessing import MinMaxScaler
+
 from pennystockpipeline.PennyStockData import PennyStockData
 
-class PennyStockModeler(nn.Module):
+class PennyStockModel(nn.Module):
     # input_size : number of features in input at each time step
     # hidden_size : Number of LSTM units 
     # num_layers : number of LSTM layers 
     def __init__(self, input_size, hidden_size, num_layers, device='cpu') -> None: 
-        super(PennyStockModeler, self).__init__() #initializes the parent class nn.Module
+        super(PennyStockModel, self).__init__() #initializes the parent class nn.Module
         self.device = device
         if device=='cuda':
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -44,96 +46,73 @@ class PennyStockModeler(nn.Module):
         self.num_forecast_steps = num_forecast_steps
          
         # Convert to NumPy and remove singleton dimensions
-        if self.device == 'cuda':
-            sequence_to_plot = self.x_test.squeeze().cuda().numpy()
-        else:
-            sequence_to_plot = self.x_test.squeeze().cpu().numpy()
-         
+        sequence_to_plot = self.x_test.squeeze().cpu().numpy()
+    
         # Use the last 36 data points as the starting point
         historical_data = sequence_to_plot[-1]
-        print(historical_data.shape)
-         
+        
         # Initialize a list to store the forecasted values
         forecasted_values = []
          
         # Use the trained model to forecast future values
         with torch.no_grad():
-            for _ in range(num_forecast_steps*2):
+            for _ in range(num_forecast_steps * 2):
                 # Prepare the historical_data tensor
                 historical_data_tensor = torch.as_tensor(historical_data).view(1, -1, 1).float().to(self.device)
                 # Use the model to predict the next value
-                if self.device == 'cuda':
-                    predicted_value = self(historical_data_tensor).cuda().numpy()[0, 0]
-                else:
-                    predicted_value = self(historical_data_tensor).cpu().numpy()[0, 0]
-         
+                predicted_value = self(historical_data_tensor).cpu().numpy()[0, 0]
+                
                 # Append the predicted value to the forecasted_values list
                 forecasted_values.append(predicted_value[0])
          
                 # Update the historical_data sequence by removing the oldest value and adding the predicted value
+                #historical_data
                 historical_data = np.roll(historical_data, shift=-1)
-                historical_data[:-1] = predicted_value
+                historical_data[-1] = predicted_value
+    
+        # Generate
+        model_psd_data_df = pd.DataFrame(self.psd.data, columns=self.psd.headers)
+        psd_ds_dates = model_psd_data_df['p_date'].values.tolist()
+        psd_ds_times = model_psd_data_df['p_time'].values.tolist()
+    
+        #psd_ds_dates_dt = [datetime.strptime(d, "%Y-%m-%d") for d in psd_ds_dates]
+        #last_date = max(psd_ds_dates_dt)
+        #next_date = last_date + timedelta(days=1)
+    
+        next_date = self.psd.next_max_date
+    
+        next_date_ls = [next_date for i in range(num_forecast_steps*3)]
+    
+        #print(type(psd_ds_dates), type(psd_ds_dates[0]))
+        #print(type(next_date_ls), type(next_date_ls[0]))
+    
+        psd_ds_dates = psd_ds_dates + next_date_ls
+    
+        #print(type(psd_ds_dates), type(psd_ds_dates[0]))
+        #print(type(next_date_ls), type(next_date_ls[0]))
         
-        # Generate futute dates
-        last_date = max(self.psd.ds_dates, key=lambda d: datetime.strptime(d, '%Y-%m-%d'))
-        #last_date = np.transpose().max()
-         
-        # Generate the next 36 5-min interval times 
-        future_dates = pd.date_range(start=last_date + pd.DateOffset(1), periods=num_forecast_steps)
-         
+        time_steps_set = psd_ds_times[:num_forecast_steps]
+        psd_ds_times = psd_ds_times + psd_ds_times[:num_forecast_steps*3]
+    
+        #print(type(psd_ds_dates[0]), psd_ds_dates[0])
+        
         # Concatenate the original index with the future dates
-        combined_index = np.transpose(self.psd.ds_dates).index.append(future_dates)
-
+        self.psd_ds_dates = psd_ds_dates
+        self.psd_ds_times = psd_ds_times
+    
         self.forecasted_values = forecasted_values
-        self.combined_index = combined_index
         self.sequence_to_plot = sequence_to_plot
-        
-        return self
     
-
-    def plot_training_test_loss(self):
-        _x = np.linspace(1, self.num_epochs, self.num_epochs)
-        plt.plot(_x, self.train_hist, scalex=True, label="Training loss")
-        plt.plot(_x, self.test_hist, label="Test loss")
-        plt.legend()
-        plt.show()
-        
         return self
 
-    def split_dataset(self, psd, split=0.8, to_torch=True):
-        ##
-        self.psd = psd
-        x, y = psd.xs, psd.ys
-
-        #self.train_data, self.test_data = self.psd.o_data[:train_size], self.psd.o_data[train_size:]
-        
-        train_size = int(len(x) * split)
-    
-        x_train, x_test = x[:train_size], x[train_size:]
-        y_train, y_test = y[:train_size], y[train_size:]
-        #np.array
-        print(f'x_train.shape: {x_train.shape}, y_train.shape: {y_train.shape}')
-        print(f'x_test.shape: {x_test.shape}, y_test.shape: {y_test.shape}')
-    
-        if to_torch:
-            x_train = torch.tensor(x_train, dtype=torch.float32)
-            y_train = torch.tensor(y_train, dtype=torch.float32)
-            x_test = torch.tensor(x_test, dtype=torch.float32)
-            y_test = torch.tensor(y_test, dtype=torch.float32)
-
-        #print(f'x_train.shape: {x_train.shape}, y_train.shape: {y_train.shape}')
-        #print(f'x_test.shape: {x_test.shape}, y_test.shape: {y_test.shape}')
-        
-        self.x_train = x_train
-        self.x_test = x_test
-        self.y_train = y_train
-        self.y_test = y_test
-        
-        return self
-
-    def create_dataloaders(self, batch_size=16):
+    def create_dataloaders(self, psd, batch_size=16):
         # Create DataLoader for batch training
         self.batch_size = batch_size
+
+        self.psd = psd
+        
+        self.x_train, self.y_train = psd.x_train, psd.y_train
+        self.x_test, self.y_test = psd.x_test, psd.y_test
         
         self.train_dataset = TensorDataset(self.x_train, self.y_train)
         self.train_loader = DataLoader(self.train_dataset, batch_size = self.batch_size, shuffle=True) 
@@ -196,4 +175,65 @@ class PennyStockModeler(nn.Module):
         self.train_hist = train_hist
         self.test_hist = test_hist
         
+        return self
+
+    def plot_training_test_loss(self):
+        _x = np.linspace(1, self.num_epochs, self.num_epochs)
+        plt.plot(_x, self.train_hist, scalex=True, label="Training loss")
+        plt.plot(_x, self.test_hist, label="Test loss")
+        plt.legend()
+        plt.show()
+        
+        return self
+
+    def plot_forecasting(self):
+
+        forecasted_values = self.forecasted_values
+        
+        psd_ds_dates = self.psd_ds_dates[-100:]
+        psd_ds_times = self.psd_ds_times[-100:]
+    
+        # last 100 rows
+        psd_ds_datetimes = []
+        
+        [psd_ds_datetimes.append(d + " " + t) for d,t in zip(psd_ds_dates, psd_ds_times)]
+    
+        test_data_x = self.psd.x_test.squeeze().reshape(-1, 1).squeeze()
+        #print(len(test_data_x))
+        #print(type(test_data_x), test_data_x.shape)
+        
+        sequence_to_plot = self.sequence_to_plot
+        
+        model_psd_data_df = pd.DataFrame(self.psd.data, columns=self.psd.headers)
+        
+        #set the size of the plot 
+        plt.rcParams['figure.figsize'] = [14, 4] 
+        
+        #Test data
+        plt.plot(psd_ds_datetimes[-100:-40], test_data_x[-100:-40], label = "input", color = "b") 
+        #reverse the scaling transformation
+        original_cases = self.psd.scaler.inverse_transform(np.expand_dims(sequence_to_plot[-1], axis=0))#.flatten() 
+        original_cases = original_cases.reshape(-1, 1).squeeze()
+        
+        #the historical data used as input for forecasting
+        plt.plot(psd_ds_datetimes[-40:-20], original_cases, label='actual values', color='green') 
+        
+        #Forecasted Values 
+        #reverse the scaling transformation
+        forecasted_cases = self.psd.scaler.inverse_transform(np.expand_dims(forecasted_values, axis=0)).flatten() 
+        # plotting the forecasted values
+        plt.plot(psd_ds_datetimes[-40:], forecasted_cases, label='forecasted values', color='red') 
+        
+        plt.xlabel('Time Step')
+        plt.ylabel('Value')
+    
+        plt.xticks(psd_ds_datetimes, psd_ds_datetimes, rotation='vertical')
+        plt.locator_params(axis='x', nbins=len(psd_ds_datetimes)/5)
+        plt.tight_layout(pad=4)
+        plt.subplots_adjust(bottom=0.15)
+    
+        plt.legend()
+        plt.title('Time Series Forecasting')
+        plt.grid(True)
+
         return self
