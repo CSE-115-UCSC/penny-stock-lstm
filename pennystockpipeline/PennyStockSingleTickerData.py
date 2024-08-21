@@ -58,6 +58,7 @@ class PennyStockSingleTickerData():
         print(f'x_test.shape: {x_test.shape}, y_test.shape: {y_test.shape}')
     
         if to_torch:
+            torch.manual_seed(0)
             x_train = torch.tensor(x_train, dtype=torch.float32)
             y_train = torch.tensor(y_train, dtype=torch.float32)
             x_test = torch.tensor(x_test, dtype=torch.float32)

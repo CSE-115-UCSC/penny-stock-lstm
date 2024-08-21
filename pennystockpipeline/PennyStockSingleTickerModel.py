@@ -46,7 +46,7 @@ class PennyStockSingleTickerModel(nn.Module):
         self.num_forecast_steps = num_forecast_steps
          
         # Convert to NumPy and remove singleton dimensions
-        sequence_to_plot = self.x_test.squeeze().cpu().numpy()
+        sequence_to_plot = self.x_test.squeeze().to(self.device).numpy()
     
         # Use the last 36 data points as the starting point
         historical_data = sequence_to_plot[-1]
@@ -209,12 +209,10 @@ class PennyStockSingleTickerModel(nn.Module):
         plt.plot(psd_ds_datetimes[-80:-20], test_data_x[-60:], label = "input", color = "b") 
         
         #reverse the scaling transformation
-        original_cases = self.psd.scaler.inverse_transform(np.expand_dims(sequence_to_plot[-1], axis=0))#.flatten() 
-        #original_cases = self.psd.scaler.inverse_transform(np.expand_dims(sequence_to_plot, axis=0))#.flatten() 
+        original_cases = self.psd.scaler.inverse_transform(np.expand_dims(sequence_to_plot[-1], axis=0))#.flatten()  
         original_cases = original_cases.reshape(-1, 1).squeeze()
 
         #the historical data used as input for forecasting
-        #plt.plot(psd_ds_datetimes[-40:], test_data_x[-40:], label='actual values', color='green') 
         plt.plot(psd_ds_datetimes[-40:-20], original_cases, label='actual values', color='green')
         
         #Forecasted Values 

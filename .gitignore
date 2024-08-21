@@ -163,3 +163,4 @@ cython_debug/
 /dataset
 *.sql
 requirements.txt
+*.pth

@@ -3,6 +3,7 @@
 ## PennyStockModelPipeline
 ## 
 import csv, os, sys
+#import copy
 import numpy as np
 import pandas as pd
 from time import time, strftime, gmtime
@@ -26,14 +27,18 @@ class PennyStockModel(nn.Module):
     # input_size : number of features in input at each time step
     # hidden_size : Number of LSTM units 
     # num_layers : number of LSTM layers 
-    def __init__(self, input_size, hidden_size, num_layers, device='cpu') -> None: 
+    def __init__(self, input_size=1, hidden_layer_size=32, num_layers=2, output_size=1, dropout=0, device='cpu') -> None:
+        #torch.manual_seed(1)
+        
         super(PennyStockModel, self).__init__() #initializes the parent class nn.Module
         self.device = device
         if device=='cuda':
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True) #.to(self.device)
-        self.linear = nn.Linear(hidden_size, 1)
+        self.lstm = nn.LSTM(input_size, hidden_layer_size, num_layers, batch_first=True) #.to(self.device)
+        if (dropout > 0):
+            self.dropout = nn.Dropout(dropout)
+        self.linear = nn.Linear(hidden_layer_size, output_size)
 
     def forward(self, x): # defines forward pass of the neural network       
         out, _ = self.lstm(x)
@@ -46,7 +51,7 @@ class PennyStockModel(nn.Module):
         self.num_forecast_steps = num_forecast_steps
          
         # Convert to NumPy and remove singleton dimensions
-        sequence_to_plot = self.x_test.squeeze().cpu().numpy()
+        sequence_to_plot = self.x_test.squeeze().to(self.device).numpy()
     
         # Use the last 36 data points as the starting point
         historical_data = sequence_to_plot[-1]
@@ -60,7 +65,7 @@ class PennyStockModel(nn.Module):
                 # Prepare the historical_data tensor
                 historical_data_tensor = torch.as_tensor(historical_data).view(1, -1, 1).float().to(self.device)
                 # Use the model to predict the next value
-                predicted_value = self(historical_data_tensor).cpu().numpy()[0, 0]
+                predicted_value = self(historical_data_tensor).to(self.device).numpy()[0, 0]
                 
                 # Append the predicted value to the forecasted_values list
                 forecasted_values.append(predicted_value[0])
@@ -81,7 +86,7 @@ class PennyStockModel(nn.Module):
     
         next_date = self.psd.next_max_date
     
-        next_date_ls = [next_date for i in range(num_forecast_steps*3)]
+        next_date_ls = [next_date for i in range(num_forecast_steps)]
     
         #print(type(psd_ds_dates), type(psd_ds_dates[0]))
         #print(type(next_date_ls), type(next_date_ls[0]))
@@ -91,8 +96,8 @@ class PennyStockModel(nn.Module):
         #print(type(psd_ds_dates), type(psd_ds_dates[0]))
         #print(type(next_date_ls), type(next_date_ls[0]))
         
-        time_steps_set = psd_ds_times[:num_forecast_steps]
-        psd_ds_times = psd_ds_times + psd_ds_times[:num_forecast_steps*3]
+        time_steps_set = ['16:30', '16:35', '16:40', '16:45', '16:50', '16:55', '17:00', '17:05', '17:10', '17:15', '17:20', '17:25', '17:30', '17:35', '17:40', '17:45', '17:50', '17:55', '18:00', '18:05']
+        psd_ds_times = psd_ds_times + time_steps_set
     
         #print(type(psd_ds_dates[0]), psd_ds_dates[0])
         
@@ -125,12 +130,18 @@ class PennyStockModel(nn.Module):
         
     def train_model(self, loss_fn, optimizer, num_epochs=50):
         model = self
-        #self.loss_fn = loss_fn
-        #self.optimizer = optimizer
         
         self.num_epochs = num_epochs
         train_hist =[]
         test_hist =[]
+
+        #Initialize Variables for EarlyStopping
+        #best_loss = float(1.0)
+        #best_model_weights = None
+        #patience = 10
+
+        best_loss = float(100000)
+        best_model_weights = None
         
         # Training loop
         for epoch in range(num_epochs):
@@ -166,15 +177,36 @@ class PennyStockModel(nn.Module):
          
                     total_test_loss += test_loss.item()
          
+                # Find best test loss for keepsake
+                if (total_test_loss < best_loss):
+                    print(f'best_loss: {total_test_loss} @ epoch: {epoch}')
+                    best_loss = total_test_loss
+                    best_model_weights = self.state_dict()
+                    #model_path = 'model_weights_{}_{}.pth'.format(datetime.now().strftime('%Y%m%d_%H%M%S'), epoch+1)
+                    #torch.save(best_model_weights, model_path)
+
                 # Calculate average test loss and accuracy
                 average_test_loss = total_test_loss / len(self.test_loader)
                 test_hist.append(average_test_loss)
+                
+                # Early stopping
+                #if total_test_loss < best_loss:
+                #    best_loss = total_test_loss
+                #    best_model_weights = copy.deepcopy(self.state_dict())  # Deep copy here      
+                #    patience = 10  # Reset patience counter
+                #else:
+                #    patience -= 1
+                #    if patience == 0:
+                #        break
+                
             if (epoch+1)%10==0:
-                print(f'Epoch [{epoch+1}/{num_epochs}] - Training Loss: {average_loss:.4f}, Test Loss: {average_test_loss:.4f}')
+                print(f'Epoch [{epoch+1}/{num_epochs}] - Training Loss: {average_loss:.6f}, Test Loss: {average_test_loss:.6f}')
 
         self.train_hist = train_hist
         self.test_hist = test_hist
-        
+
+        self.load_state_dict(best_model_weights)
+
         return self
 
     def plot_training_test_loss(self):
@@ -186,8 +218,19 @@ class PennyStockModel(nn.Module):
         
         return self
 
-    def plot_forecasting(self):
+    def save_model(self):
+        torch.save(self.state_dict(), 'model_weights_PennyStockModel.pth')
+        
+        return self
 
+    def load_model(self):
+        if (self.__file_exists('model_weights_PennyStockModel.pth')):
+            self.load_state_dict(torch.load('model_weights_PennyStockModel.pth', weights_only=True))
+            self.eval()
+        
+        return self
+
+    def plot_forecasting(self):
         forecasted_values = self.forecasted_values
         
         psd_ds_dates = self.psd_ds_dates[-100:]
@@ -197,10 +240,7 @@ class PennyStockModel(nn.Module):
         psd_ds_datetimes = []
         
         [psd_ds_datetimes.append(d + " " + t) for d,t in zip(psd_ds_dates, psd_ds_times)]
-    
-        test_data_x = self.psd.x_test.squeeze().reshape(-1, 1).squeeze()
-        #print(len(test_data_x))
-        #print(type(test_data_x), test_data_x.shape)
+        test_data_x = np.float32(self.psd.scaler.inverse_transform(self.psd.x_test.squeeze()).reshape(-1, 1).squeeze())
         
         sequence_to_plot = self.sequence_to_plot
         
@@ -210,7 +250,8 @@ class PennyStockModel(nn.Module):
         plt.rcParams['figure.figsize'] = [14, 4] 
         
         #Test data
-        plt.plot(psd_ds_datetimes[-100:-40], test_data_x[-100:-40], label = "input", color = "b") 
+        plt.plot(psd_ds_datetimes[-100:-20], test_data_x[-80:], label = "input", color = "b") 
+        
         #reverse the scaling transformation
         original_cases = self.psd.scaler.inverse_transform(np.expand_dims(sequence_to_plot[-1], axis=0))#.flatten() 
         original_cases = original_cases.reshape(-1, 1).squeeze()
@@ -228,7 +269,7 @@ class PennyStockModel(nn.Module):
         plt.ylabel('Value')
     
         plt.xticks(psd_ds_datetimes, psd_ds_datetimes, rotation='vertical')
-        plt.locator_params(axis='x', nbins=len(psd_ds_datetimes)/5)
+        plt.locator_params(axis='x', nbins=len(psd_ds_datetimes))
         plt.tight_layout(pad=4)
         plt.subplots_adjust(bottom=0.15)
     
@@ -236,4 +277,19 @@ class PennyStockModel(nn.Module):
         plt.title('Time Series Forecasting')
         plt.grid(True)
 
+        print(f'original_cases:')
+        print(f'{original_cases}')
+
+        print(f'forecasted_cases:')
+        print(f'{forecasted_cases}')
+
         return self
+
+    # Private valid file checker
+    def __file_exists(self, path) -> bool:
+        if os.path.isfile(path):
+            return True
+        else:
+            print("[INFO][PennyStockModel]:", path, "not found")
+            return False
+

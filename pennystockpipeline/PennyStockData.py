@@ -17,6 +17,10 @@ import numpy as np
 import pandas as pd
 from time import time, strftime, gmtime
 
+import matplotlib.pyplot as plt # Visualization 
+import matplotlib.dates as mdates # Formatting dates
+import seaborn as sns # Visualization
+
 from sklearn.preprocessing import MinMaxScaler
 
 import torch # Library for implementing Deep Neural Network 
@@ -24,10 +28,20 @@ import torch # Library for implementing Deep Neural Network
 class PennyStockData():
     
     def __init__(self, database_name_with_path, table_name, impute=True, verbose=0) -> None:
+        #torch.manual_seed(1)
         self.verbose = verbose
         
         self.__load_data(database_name_with_path, table_name, impute)
         self.scaler = MinMaxScaler(feature_range=(0,1))
+
+    def plot_data(self):
+        plt.rcParams['figure.figsize'] = [14, 4] 
+        
+        data_df = pd.DataFrame(self.data, columns = self.headers)
+        #data_dfn = pd.DataFrame(self.normalized_data, columns = self.normalized_headers)
+        plt.plot(data_df['p_date'], data_df['volume_weighted_average'], label = "volume_weighted_average", color = "b")
+        
+        return self
 
     def split_dataset(self, split=0.8, to_torch=True):
         x, y = self.xs, self.ys
@@ -207,7 +221,7 @@ class PennyStockData():
         sqliteConnection = sqlite3.connect(path)
         cursor = sqliteConnection.cursor()
     
-        query = "SELECT ticker_id, ticker, p_date, p_time, volume_weighted_average, open, close, high, low, time/1000 as time, volume, number_of_trades FROM " + table + " WHERE ticker_id<>30 ORDER BY ticker_id, p_date, p_time"
+        query = "SELECT ticker_id, ticker, p_date, p_time, volume_weighted_average, open, close, high, low, time/1000 as time, volume, number_of_trades FROM " + table + " WHERE ticker_id = 9 ORDER BY ticker_id, p_date, p_time"
         cursor.execute(query)
         
         data = [list(i) for i in cursor.fetchall()]
@@ -221,7 +235,7 @@ class PennyStockData():
 
         # get max next date from database
         next_max_date = self.__get_next_max_date(table, cursor)
-        print(next_max_date)
+        print(f'next_max_date: {next_max_date}')
         self.next_max_date = next_max_date
         
         return self
