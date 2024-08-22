@@ -88,13 +88,6 @@ class PennyStockData():
 
         if (self.verbose == 2):
             print(f'[INFO][PennyStockData]: Performing ticker-wise normalization on {columns_to_normalize}')
-
-        ## Storing original data and headers
-        #self.o_data = self.data
-        #self.o_headers = self.headers
-        
-        # normalized_data = pd.DataFrame()
-        # First we normalize by each ticker as tickerwise, the wva differs a lot
             
         # Create a scaler for every stock
         scalers = {}
@@ -107,8 +100,6 @@ class PennyStockData():
             data_by_ticker[ticker] = dfx[dfx['ticker_id'] == ticker].copy() # Shape is (40840, 4)
             data_to_normalize = data_by_ticker[ticker][columns_to_normalize]
 
-
-            
             # Scale the selected columns individually based on ticker
             scalers[ticker] = MinMaxScaler(feature_range=(0,1)) 
             normalized_column_data = scalers[ticker].fit_transform(data_to_normalize)
