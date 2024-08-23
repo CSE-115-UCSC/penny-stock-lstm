@@ -2,24 +2,17 @@
 
 ## PennyStockModelPipeline
 ## 
-import csv, os, sys
+import os
 #import copy
 import numpy as np
 import pandas as pd
-from time import time, strftime, gmtime
-from datetime import datetime
 
-import matplotlib.pyplot as plt # Visualization 
-import matplotlib.dates as mdates # Formatting dates
-import seaborn as sns # Visualization
+import matplotlib.pyplot as plt # Visualization
 
 import torch # Library for implementing Deep Neural Network 
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 
-from sklearn.preprocessing import MinMaxScaler
 
 from pennystockpipeline.PennyStockData import PennyStockData
 
@@ -80,26 +73,15 @@ class PennyStockModel(nn.Module):
         psd_ds_dates = model_psd_data_df['p_date'].values.tolist()
         psd_ds_times = model_psd_data_df['p_time'].values.tolist()
     
-        #psd_ds_dates_dt = [datetime.strptime(d, "%Y-%m-%d") for d in psd_ds_dates]
-        #last_date = max(psd_ds_dates_dt)
-        #next_date = last_date + timedelta(days=1)
     
         next_date = self.psd.next_max_date
     
         next_date_ls = [next_date for i in range(num_forecast_steps)]
     
-        #print(type(psd_ds_dates), type(psd_ds_dates[0]))
-        #print(type(next_date_ls), type(next_date_ls[0]))
-    
         psd_ds_dates = psd_ds_dates + next_date_ls
-    
-        #print(type(psd_ds_dates), type(psd_ds_dates[0]))
-        #print(type(next_date_ls), type(next_date_ls[0]))
         
         time_steps_set = ['16:30', '16:35', '16:40', '16:45', '16:50', '16:55', '17:00', '17:05', '17:10', '17:15', '17:20', '17:25', '17:30', '17:35', '17:40', '17:45', '17:50', '17:55', '18:00', '18:05']
         psd_ds_times = psd_ds_times + time_steps_set
-    
-        #print(type(psd_ds_dates[0]), psd_ds_dates[0])
         
         # Concatenate the original index with the future dates
         self.psd_ds_dates = psd_ds_dates
@@ -182,8 +164,6 @@ class PennyStockModel(nn.Module):
                     print(f'best_loss: {total_test_loss} @ epoch: {epoch}')
                     best_loss = total_test_loss
                     best_model_weights = self.state_dict()
-                    #model_path = 'model_weights_{}_{}.pth'.format(datetime.now().strftime('%Y%m%d_%H%M%S'), epoch+1)
-                    #torch.save(best_model_weights, model_path)
 
                 # Calculate average test loss and accuracy
                 average_test_loss = total_test_loss / len(self.test_loader)
