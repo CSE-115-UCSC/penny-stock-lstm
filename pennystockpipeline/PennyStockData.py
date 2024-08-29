@@ -221,7 +221,7 @@ class PennyStockData():
         sqliteConnection = sqlite3.connect(path)
         cursor = sqliteConnection.cursor()
     
-        query = "SELECT ticker_id, ticker, p_date, p_time, volume_weighted_average, open, close, high, low, time/1000 as time, volume, number_of_trades FROM " + table + " WHERE ticker_id = 9 ORDER BY ticker_id, p_date, p_time"
+        query = "SELECT ticker_id, ticker, p_date, p_time, volume_weighted_average, open, close, high, low, time/1000 as time, volume, number_of_trades FROM " + table + " WHERE ticker_id <> 30 ORDER BY ticker_id, p_date, p_time"
         cursor.execute(query)
         
         data = [list(i) for i in cursor.fetchall()]
