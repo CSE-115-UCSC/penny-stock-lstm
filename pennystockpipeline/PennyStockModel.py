@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt # Visualization
 import torch # Library for implementing Deep Neural Network 
 import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader
+from sklearn.metrics import mean_squared_error, r2_score
 
 
 from pennystockpipeline.PennyStockData import PennyStockData
@@ -19,55 +20,72 @@ from pennystockpipeline.PennyStockData import PennyStockData
 class PennyStockModel(nn.Module):
     # input_size : number of features in input at each time step
     # hidden_size : Number of LSTM units 
-    # num_layers : number of LSTM layers 
-    def __init__(self, input_size=1, hidden_layer_size=32, num_layers=2, output_size=1, dropout=0, device='cpu') -> None:
-        #torch.manual_seed(1)
+    # num_layers : number of LSTM layers
+    def __init__(self, input_size=1, hidden_layer_size=32, num_layers=2, output_size=1, dropout=0.2, device='cpu') -> None:
+        super(PennyStockModel, self).__init__()
         
-        super(PennyStockModel, self).__init__() #initializes the parent class nn.Module
         self.device = device
         if device=='cuda':
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-        self.lstm = nn.LSTM(input_size, hidden_layer_size, num_layers, batch_first=True) #.to(self.device)
-        if (dropout > 0):
-            self.dropout = nn.Dropout(dropout)
+        self.lstm = nn.LSTM(input_size, hidden_layer_size, num_layers, batch_first=True, dropout=dropout)
         self.linear = nn.Linear(hidden_layer_size, output_size)
 
-    def forward(self, x): # defines forward pass of the neural network       
+    def forward(self, x):
         out, _ = self.lstm(x)
-        out = self.linear(out)
-        
+        out = self.linear(out[:, -1, :])
         return out
+
+    def model_evaluation(self):
+
+        # Evaluate the model and calculate RMSE and R² score
+        self.eval()
+        with torch.no_grad():
+            test_predictions = []
+            for batch_X_test in self.x_test:
+                batch_X_test = batch_X_test.to(self.device).unsqueeze(0)  # Add batch dimension
+                test_predictions.append(self(batch_X_test).to(self.device).numpy().flatten()[0])
+        
+        test_predictions = np.array(test_predictions)
+        
+        # Calculate RMSE and R² score
+        rmse = np.sqrt(mean_squared_error(self.y_test.to(self.device).numpy(), test_predictions))
+        r2 = r2_score(self.y_test.to(self.device).numpy(), test_predictions)
+        
+        print(f'RMSE: {rmse:.4f}')
+        print(f'R² Score: {r2:.4f}')
+
+        return self
 
     def forecast(self, num_forecast_steps):
         # Define the number of future time steps to forecast
         self.num_forecast_steps = num_forecast_steps
-         
         # Convert to NumPy and remove singleton dimensions
-        sequence_to_plot = self.x_test.squeeze().to(self.device).numpy()
-    
+        sequence_to_plot = self.x_test.squeeze().cpu().numpy()
         # Use the last 36 data points as the starting point
         historical_data = sequence_to_plot[-1]
-        
         # Initialize a list to store the forecasted values
         forecasted_values = []
          
         # Use the trained model to forecast future values
         with torch.no_grad():
-            for _ in range(num_forecast_steps * 2):
+            for _ in range(num_forecast_steps):
                 # Prepare the historical_data tensor
                 historical_data_tensor = torch.as_tensor(historical_data).view(1, -1, 1).float().to(self.device)
                 # Use the model to predict the next value
-                predicted_value = self(historical_data_tensor).to(self.device).numpy()[0, 0]
+                predicted_value = self(historical_data_tensor).cpu().numpy()[0, 0]
                 
                 # Append the predicted value to the forecasted_values list
-                forecasted_values.append(predicted_value[0])
+                forecasted_values.append(predicted_value)
          
                 # Update the historical_data sequence by removing the oldest value and adding the predicted value
                 #historical_data
                 historical_data = np.roll(historical_data, shift=-1)
                 historical_data[-1] = predicted_value
-    
+
+        #last_date = test_data.index[-1]
+        #future_dates = pd.date_range(start=last_date + pd.DateOffset(1), periods=30)
+        
         # Generate
         model_psd_data_df = pd.DataFrame(self.psd.data, columns=self.psd.headers)
         psd_ds_dates = model_psd_data_df['p_date'].values.tolist()
@@ -80,7 +98,8 @@ class PennyStockModel(nn.Module):
     
         psd_ds_dates = psd_ds_dates + next_date_ls
         
-        time_steps_set = ['16:30', '16:35', '16:40', '16:45', '16:50', '16:55', '17:00', '17:05', '17:10', '17:15', '17:20', '17:25', '17:30', '17:35', '17:40', '17:45', '17:50', '17:55', '18:00', '18:05']
+        #time_steps_set = ['16:30', '16:35', '16:40', '16:45', '16:50', '16:55', '17:00', '17:05', '17:10', '17:15', '17:20', '17:25', '17:30', '17:35', '17:40', '17:45', '17:50', '17:55', '18:00', '18:05']
+        time_steps_set = ['16:30', '16:35', '16:40', '16:45', '16:50', '16:55', '17:00', '17:05', '17:10', '17:15', '17:20', '17:25', '17:30', '17:35', '17:40', '17:45', '17:50', '17:55', '18:00', '18:05', '18:10', '18:15', '18:20', '18:25', '18:30', '18:35', '18:40', '18:45', '18:50', '18:55', '19:00', '19:05', '19:10', '19:15', '19:20', '19:25', '19:30', '19:35', '19:40', '19:45', '19:50', '19:55', '20:00', '20:05', '20:10', '20:15', '20:20', '20:25' ]
         psd_ds_times = psd_ds_times + time_steps_set
         
         # Concatenate the original index with the future dates
@@ -127,13 +146,13 @@ class PennyStockModel(nn.Module):
         
         # Training loop
         for epoch in range(num_epochs):
+            print(f'Epoch: {epoch}')
             total_loss = 0.0
-         
             # Training
-            model.train()
+            self.train()
             for batch_x, batch_y in self.train_loader:
                 batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
-                predictions = model(batch_x)
+                predictions = self(batch_x)
                 #print(predictions)
                 loss = loss_fn(predictions, batch_y)
          
@@ -148,13 +167,13 @@ class PennyStockModel(nn.Module):
             train_hist.append(average_loss)
          
             # Validation on test data
-            model.eval()
+            self.eval()
             with torch.no_grad():
                 total_test_loss = 0.0
          
                 for batch_x_test, batch_y_test in self.test_loader:
                     batch_x_test, batch_y_test = batch_x_test.to(self.device), batch_y_test.to(self.device)
-                    predictions_test = model(batch_x_test)
+                    predictions_test = self(batch_x_test)
                     test_loss = loss_fn(predictions_test, batch_y_test)
          
                     total_test_loss += test_loss.item()
@@ -205,7 +224,7 @@ class PennyStockModel(nn.Module):
 
     def load_model(self):
         if (self.__file_exists('model_weights_PennyStockModel.pth')):
-            self.load_state_dict(torch.load('model_weights_PennyStockModel.pth', weights_only=True))
+            self.load_state_dict(torch.load('model_weights_PennyStockModel.pth', weights_only=False, map_location=torch.device('cpu')))
             self.eval()
         
         return self
@@ -220,7 +239,7 @@ class PennyStockModel(nn.Module):
         psd_ds_datetimes = []
         
         [psd_ds_datetimes.append(d + " " + t) for d,t in zip(psd_ds_dates, psd_ds_times)]
-        test_data_x = np.float32(self.psd.scaler.inverse_transform(self.psd.x_test.squeeze()).reshape(-1, 1).squeeze())
+        test_data_x = np.float32(self.psd.scaler.inverse_transform(self.x_test.squeeze()).reshape(-1, 1).squeeze())
         
         sequence_to_plot = self.sequence_to_plot
         
@@ -241,7 +260,8 @@ class PennyStockModel(nn.Module):
         
         #Forecasted Values 
         #reverse the scaling transformation
-        forecasted_cases = self.psd.scaler.inverse_transform(np.expand_dims(forecasted_values, axis=0)).flatten() 
+        #forecasted_cases = self.psd.scaler.inverse_transform(np.expand_dims(forecasted_values, axis=0)).flatten() 
+        forecasted_cases = self.psd.scaler.inverse_transform(np.array(forecasted_values).reshape(-1, 1)).flatten()
         # plotting the forecasted values
         plt.plot(psd_ds_datetimes[-40:], forecasted_cases, label='forecasted values', color='red') 
         
@@ -249,7 +269,7 @@ class PennyStockModel(nn.Module):
         plt.ylabel('Value')
     
         plt.xticks(psd_ds_datetimes, psd_ds_datetimes, rotation='vertical')
-        plt.locator_params(axis='x', nbins=len(psd_ds_datetimes))
+        plt.locator_params(axis='x', nbins=len(psd_ds_datetimes)/3)
         plt.tight_layout(pad=4)
         plt.subplots_adjust(bottom=0.15)
     
@@ -273,3 +293,42 @@ class PennyStockModel(nn.Module):
             print("[INFO][PennyStockModel]:", path, "not found")
             return False
 
+    def model_evaluation(self):
+        # Evaluate the model and calculate RMSE and R² score
+        self.eval()
+        with torch.no_grad():
+            test_predictions = []
+            for batch_X_test in self.x_test:
+                batch_X_test = batch_X_test.to(self.device).unsqueeze(0)  # Add batch dimension
+                test_predictions.append(self(batch_X_test).cpu().numpy().flatten()[0])
+
+        test_predictions = np.array(test_predictions)
+
+        # Calculate RMSE and R² score
+        rmse = np.sqrt(mean_squared_error(self.y_test.cpu().numpy(), test_predictions))
+        r2 = r2_score(self.y_test.cpu().numpy(), test_predictions)
+
+        print(f'RMSE: {rmse:.4f}')
+        print(f'R² Score: {r2:.4f}')
+
+        return self
+
+    '''
+    
+    def __init__(self, input_size=1, hidden_layer_size=32, num_layers=2, output_size=1, dropout=0, device='cpu') -> None:
+        super(PennyStockModel, self).__init__() #initializes the parent class nn.Module
+        self.device = device
+        if device=='cuda':
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        self.lstm = nn.LSTM(input_size, hidden_layer_size, num_layers, batch_first=True) #.to(self.device)
+        if (dropout > 0):
+            self.dropout = nn.Dropout(dropout)
+        self.linear = nn.Linear(hidden_layer_size, output_size)
+
+    def forward(self, x): # defines forward pass of the neural network       
+        out, _ = self.lstm(x)
+        out = self.linear(out)
+        
+        return out
+    '''

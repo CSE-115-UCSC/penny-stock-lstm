@@ -43,66 +43,153 @@ class PennyStockData():
         
         return self
 
-    def split_dataset(self, split=0.8, to_torch=True):
-        x, y = self.xs, self.ys
+    #def split_dataset(self, split=0.8, to_torch=True):
+    #    x, y = self.xs, self.ys
 
         #self.train_data, self.test_data = self.psd.o_data[:train_size], self.psd.o_data[train_size:]
         
-        train_size = int(len(x) * split)
+    #    train_size = int(len(x) * split)
     
-        x_train, x_test = x[:train_size], x[train_size:]
-        y_train, y_test = y[:train_size], y[train_size:]
+    #    x_train, x_test = x[:train_size], x[train_size:]
+    #    y_train, y_test = y[:train_size], y[train_size:]
         #np.array
-        print(f'x_train.shape: {x_train.shape}, y_train.shape: {y_train.shape}')
-        print(f'x_test.shape: {x_test.shape}, y_test.shape: {y_test.shape}')
+    #    print(f'x_train.shape: {x_train.shape}, y_train.shape: {y_train.shape}')
+    #    print(f'x_test.shape: {x_test.shape}, y_test.shape: {y_test.shape}')
     
+    #    if to_torch:
+    #        x_train = torch.tensor(x_train, dtype=torch.float32)
+    #        y_train = torch.tensor(y_train, dtype=torch.float32)
+    #        x_test = torch.tensor(x_test, dtype=torch.float32)
+    #        y_test = torch.tensor(y_test, dtype=torch.float32)
+
+        #print(f'x_train.shape: {x_train.shape}, y_train.shape: {y_train.shape}')
+        #print(f'x_test.shape: {x_test.shape}, y_test.shape: {y_test.shape}')
+        
+    #    self.x_train = x_train
+    #    self.x_test = x_test
+    #    self.y_train = y_train
+    #    self.y_test = y_test
+        
+    #    return self
+
+    def split_and_create_sequences(self, sequence_length=36, prediction_length=36, train_test_split_at=29, to_torch=True):
+        x_train, y_train, x_test, y_test = [], [], [], []
+        
+        normalized_data = self.normalized_data
+        normalized_headers = self.normalized_headers
+        
+        self_data = pd.DataFrame(self.data, columns=self.headers)
+
+        train_set = self_data[self_data['ticker_id'] < train_test_split_at]
+        test_set = self_data[self_data['ticker_id'] >= train_test_split_at]
+
+        train_set.reset_index(drop=True, inplace=True)
+        test_set.reset_index(drop=True, inplace=True)
+
+        #print(f'{len(train_set)}/{len(test_set)}')
+
+        #return self
+
+        train_tickers = train_set['ticker_id']
+        test_tickers = test_set['ticker_id']
+        
+        train_dates = train_set['p_date']
+        test_dates = test_set['p_date']
+
+        train_index = 0
+        train_count = 0
+
+        while train_index < (len(train_tickers) - sequence_length - 1):
+            if train_dates[train_index] == train_dates[train_index+sequence_length+1] and train_tickers[train_index] == train_tickers[train_index+sequence_length+1]:
+                x_train.append(normalized_data[train_index:train_index+sequence_length])
+                y_train.append(normalized_data[train_index+sequence_length+1])  # Predicting the value right after the sequence
+
+                train_index += 1
+                train_count += 1
+            else:
+                newindex = train_index
+                while train_dates[newindex] == train_dates[newindex + 1]:
+                    newindex += 1
+                newindex += 1
+                train_index = newindex
+
+        test_index = 0
+        test_count = 0
+
+        while test_index < (len(test_tickers) - prediction_length - 1):
+            if test_dates[test_index] == test_dates[test_index+prediction_length+1] and test_tickers[test_index] == test_tickers[test_index+prediction_length+1]:
+                x_test.append(normalized_data[test_index:test_index+prediction_length])
+                y_test.append(normalized_data[test_index+prediction_length+1])  # Predicting the value right after the sequence
+
+                test_index += 1
+                test_count += 1
+            else:
+                newindex = test_index
+                while test_dates[newindex] == test_dates[newindex + 1]:
+                    newindex += 1
+                newindex += 1
+                test_index = newindex
+        
+        #while train_index < len(train_tickers) - sequence_length + 1:
+        #while train_index < len(train_tickers) - sequence_length - 1:
+            #print(f'train_index: {train_index}')
+            # Check if sequence is within a single day
+        #    if train_dates[train_index] == train_dates[train_index+sequence_length] and train_tickers[train_index] == train_tickers[train_index+sequence_length]:
+        #        x_train.append(normalized_data[train_index:train_index+sequence_length])
+        #        y_train.append(normalized_data[train_index+sequence_length])
+
+        #        train_index += sequence_length
+        #        train_count += 1
+        #    else:  # Move index to the start of the next day
+        #        newindex = train_index
+        #        while train_dates[newindex] == train_dates[newindex + 1]:
+        #            newindex += 1
+        #        newindex += 1
+        #        train_index = newindex
+
+        #test_index = 0
+        #test_count = 0
+
+        #while test_index < len(test_tickers) - prediction_length - 1:
+            #print(f'test_index: {test_index}')
+            # Check if sequence is within a single day
+        #    if test_dates[test_index] == test_dates[test_index+prediction_length] and test_tickers[test_index] == test_tickers[test_index+prediction_length]:
+        #        x_test.append(normalized_data[test_index:test_index+prediction_length])
+        #        y_test.append(normalized_data[test_index+prediction_length])
+
+        #        test_index += prediction_length
+        #        test_count += 1
+        #    else:  # Move index to the start of the next day
+        #        newindex = test_index
+        #        while test_dates[newindex] == test_dates[newindex + 1]:
+        #            newindex += 1
+        #        newindex += 1
+        #        test_index = newindex
+
+        x_train = np.array(x_train)
+        y_train = np.array(y_train)
+        x_test = np.array(x_test)
+        y_test = np.array(y_test)
+
+        #x_train = np.reshape(x_train, (-1, 1))
+        #y_train = np.reshape(y_train, (-1, 1))
+        #x_test = np.reshape(x_test, (-1, 1))
+        #y_test = np.reshape(y_test, (-1, 1))
+
         if to_torch:
             x_train = torch.tensor(x_train, dtype=torch.float32)
             y_train = torch.tensor(y_train, dtype=torch.float32)
             x_test = torch.tensor(x_test, dtype=torch.float32)
             y_test = torch.tensor(y_test, dtype=torch.float32)
 
-        #print(f'x_train.shape: {x_train.shape}, y_train.shape: {y_train.shape}')
-        #print(f'x_test.shape: {x_test.shape}, y_test.shape: {y_test.shape}')
-        
         self.x_train = x_train
         self.x_test = x_test
         self.y_train = y_train
         self.y_test = y_test
-        
-        return self
 
-    def create_sequences(self, sequence_length=36, prediction_length=36):
-        xs, ys = [], []
-        index = 0
-        count = 0
-        
-        normalized_data = self.normalized_data
-        self_data = pd.DataFrame(self.data, columns=self.headers)
-        
-        tickers = self_data['ticker_id']
-        dates = self_data['p_date']
-
-        while index < len(normalized_data) - sequence_length - prediction_length + 1:
-            # Check if sequence is within a single day
-            if dates[index] == dates[index + sequence_length] and tickers[index] == tickers[index + sequence_length]:
-                # If day == 2024-05-31, print
-                # if dates[index] == "2024-05-31":
-                # print("We got a sequence from", dates[index], "to", dates[index + sequence_length], "sequence-length is", (index + sequence_length) -index, tickers[index], tickers[index + sequence_length])
-                xs.append(normalized_data[index:index + sequence_length])
-                ys.append(normalized_data[index + sequence_length:index + sequence_length + prediction_length])
-                index += sequence_length
-                count += 1
-            else:  # Move index to the start of the next day
-                newindex = index
-                while dates[newindex] == dates[newindex + 1]:
-                    newindex += 1
-                newindex += 1
-                index = newindex
-        #print("Valid days:", count)
-
-        self.xs = np.array(xs)
-        self.ys = np.array(ys)
+        print(f'train_count: {train_count} test_count: {test_count}')
+        print(f'x_train.shape: {x_train.shape}, y_train.shape: {y_train.shape}')
+        print(f'x_test.shape: {x_test.shape}, y_test.shape: {y_test.shape}')
 
         return self
     
@@ -134,15 +221,22 @@ class PennyStockData():
         normalized_data.reset_index(drop=True, inplace=True)
 
         if (self.verbose == 2):
-            print(f'[INFO][PennyStockData]: Performing global normalization on {columns_to_normalize} using MixMaxScaler')
+            print(f'[INFO][PennyStockData]: Performing global normalization on {columns_to_normalize} using MinMaxScaler')
         
         normalized_data[columns_to_normalize] = self.scaler.fit_transform(normalized_data[columns_to_normalize])
         
         #normalized_data = normalized_data.drop(columns=['ticker_id'])
         #normalized_data.reset_index(drop=True, inplace=True)
         
+        #self.normalized_data = normalized_data[columns_to_normalize].values.tolist()
+        #self.normalized_headers = columns_to_normalize
+
+        #self.normalized_columns = columns_to_normalize
+        
         self.normalized_data = normalized_data[columns_to_normalize].values.tolist()
         self.normalized_headers = columns_to_normalize
+
+        #print(self.normalized_headers)
         
         return self
 
