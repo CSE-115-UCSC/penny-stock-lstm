@@ -11,7 +11,7 @@ There are several key parts to the pipeline, split amongst various files:
 ---
 # create_database.ipynb
 
-To begin, **create_database.ipynb** is split into several parts. At the very top you'll find a place for your API keys, but at the moment, functionality with Polygon.io for [historical data](#historical_data) and Finnhub for [stock quotes](#quote) are supported.
+To begin, **create_database.ipynb** is split into several parts. At the very top you'll find a place for your API keys, but at the moment, functionality with Polygon.io for [historical data](### Gathering) and Finnhub for **quotes** are supported.
 ```
 import StockData
 polygon_key = ""
