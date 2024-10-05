@@ -149,6 +149,7 @@ Using the initial columns we obtained from Polygon.io
 | pst | close | high | low | open | otc  | ticker | timestamp | transactions | volume | vwap |
 |---|---|---|---|---|---|---|---|---|---|---|
 | 1/3/23 9:30 | 45.11 | 45.12 | 44.9 | 44.9 |   | AA | 1.67277E+12 | 371 | 19714 | 44.994 |
+
 We can optionally derive new features such as drift, volatility, moving_avg, momentum, and more to describe trends in the data. They likely will not be used by all models, so please toggle them on or off depending on your specific needs.
 Regardless of if/how the columns are changed, 2 new files will be added to your ~/historical_data directory to reflect:
 1. sd_pre.db
