@@ -1,3 +1,5 @@
+# Preface
+
 As I've been experimenting with different data sources and features, I've put together an additional pipeline to streamline gathering/processing stock data. Here is most everything I think you would need to know to use it, debug it, or make changes to it to suit your needs.
 
 There are several key parts to the pipeline, split amongst various files:
@@ -7,6 +9,20 @@ There are several key parts to the pipeline, split amongst various files:
     1. **Preprocessor.py** - *Classes/methods to support model_training.ipynb*
     2. **Model.py** - *Classes/methods to support model_training.ipynb*
 
+Some dependencies will be required to run each notebook, and they can be installed by running the following command:
+```
+pip install pandas
+pip install polygon-api-client
+pip install finnhub-python
+pip install alpha_vantage
+pip install python-dateutil
+pip install openpyxl
+pip install yfinance
+pip install numpy
+pip install scikit-learn
+pip install tensorflow
+pip install pandas-ta
+```
 
 ---
 # create_database.ipynb
