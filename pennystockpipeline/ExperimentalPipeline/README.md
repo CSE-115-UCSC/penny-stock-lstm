@@ -1,4 +1,4 @@
-Recently, as I've been experimenting with different data sources, I've put together an additional timeline to streamline gathering/processing stock data. Here is most everything I think you would need to know to use it, debug it, or make changes to it to suit your needs.
+As I've been experimenting with different data sources and features, I've put together an additional pipeline to streamline gathering/processing stock data. Here is most everything I think you would need to know to use it, debug it, or make changes to it to suit your needs.
 
 There are several key parts to the pipeline, split amongst various files:
 1. **create_database.ipynb** -  *Deals with compiling together a list of tickers, gathering historical data, imputing the data, and saving to a local database file.*
