@@ -2,10 +2,10 @@ Recently, as I've been experimenting with different data sources, I've put toget
 
 There are several key parts to the pipeline, split amongst various files:
 1. **create_database.ipynb** -  *Deals with compiling together a list of tickers, gathering historical data, imputing the data, and saving to a local database file.*
-    a. **StockData.py** - *Classes/methods to support create_database.ipynb*
-2. **model_training.ipynb**
-    a. **Preprocessor.py** - *Classes/methods to support model_training.ipynb*
-    b. **Model.py** - *Classes/methods to support model_training.ipynb*
+    1. **StockData.py** - *Classes/methods to support create_database.ipynb*
+3. **model_training.ipynb**
+    1. **Preprocessor.py** - *Classes/methods to support model_training.ipynb*
+    2. **Model.py** - *Classes/methods to support model_training.ipynb*
 
 
 ---
