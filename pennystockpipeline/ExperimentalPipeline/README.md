@@ -74,17 +74,18 @@ There are several parameters to allow you to customize the data you will receive
 3. **tickers**: This takes in the list of tickers to gather data for, which is stored in *penny_stock_tickers.tickers* from the previous function. You can modify this parameter if you wish to gather data for something else quickly and on the fly, just be sure to instantiate a **penny_stock_historical** object first so that the method StockData.Historical() may be called on it.
 4. **start_date**: I've found that with Polygon.io's API, the free plan only gives us access to data from 2023-01-01 to the present, but if you wish to alter this range, change these parameters. 
 
-Specifically, the data gathers is from the hours 9:30 - 16:00 at intervals of 5 minutes. If you wish to change this, look to:
+Specifically, the data gathered is from the hours 9:30 - 16:00 at intervals of 5 minutes. If you wish to change this, look to:
 
 *StockData.py -> Historical(StockData) -> def gather_historical(self, extra_hours=False) ->  market_open/market_close*
+
 Additionally, a flag 
 ```
-after_hours=False
+after_hours=True
 ```
-can be passed to gather data in hours outside of 9:30 - 16:00, but I advise against this as sequence lengths should be the same. 
+can be passed to gather data in hours outside of 9:30 - 16:00, but I advise leaving it False, as sequence lengths often should be the same when it comes to training. 
 
 ## Saving the data
-**Imporant Note**: It should be noted that the above function will look for a director called 
+**Imporant Note**: It should be noted that the above function will look for a directory within your pwd called 
 ```
 ~historical_data/
 ```
@@ -92,25 +93,24 @@ where it will output each {ticker}.csv file. Once this is complete, the function
 ```
 penny_stock_historical_data.to_sql()
 ```
-is called to combine each individual {ticker}.csv into a single **stockdata.csv** and a corresponding **stockdata.db**, both also within the ~/historical_data directories.
+is called to combine each individual {ticker}.csv into a single **stockdata.csv** and a corresponding **stockdata.db**, both also within the ~/historical_data/ directories.
 
 ## Imputing the data
-To help ensure effective training, I've added an imputation function with a variety of customizable parameters for ease of use. Observe the function:
+To help ensure effective training, I've added an imputation function with a variety of customizable parameters for ease of use. Observing the function:
 ```
 penny_stock_historical_data.impute(
         amount="day", 
         fill="forward", 
         dropout_threshold=0.65)
 ```
-
 1. **amount**: This parameter can take two forms, each with their own pros/cons, though I recommend "day".
     1. **day**: The function will comb over the entire joined dataset and look for every day that has at least one data-point. For each of those days, data is imputed from 9:30 - 16:00 **of that day only**. In turn, we are left with less fabricated data in the end, as days that initially had 0 data still have 0 data. It is important to know that using "day" will result in a smaller **ratio** (see below) on average for each stock, as it "plays to each of their strengths".
     2. **complete**: The function will comb over the entire joined dataset and impute-to-fill **every day** for the entire historical period (year). In turn, every stock has the same *amount* of data (by rows), but stocks that are more spotty will have more fabricated than actual data.
 2. **fill**: Different methods of imputation are available, though, at the moment, forward is the only one I have working (interpolate_linear is close but I'm still getting it to work properly with all columns). Ideally, there will be several methods (not comprehensive):
-    1. **forward**: Copies the next known data point forward until next real data point to fill the gaps, but leads to unnatural jumps and flat zones.
+    1. **forward**: Copies the last known data point forward until next real data point to fill the gaps, but leads to unnatural jumps and flat zones.
     2. **interpolate_linear**: Connects both sides of each gaps with a linear sequence of datapoints.
     3. **interpolate_polynomial**: More realistic than linear as they are connected with a polynomial curve
-    4. **rolling**: Similar to forward, but copies the last known data point. Will be implemented soon.
+    4. **rolling**: Similar to forward, but takes the average of the the last known and next known data point. Will be implemented soon.
 3. **dropout_threshold**: I would argue this is the most important parameter to monitor. Within the ```Historical.impute_data()```, I store a  **ratio** for each stock, which helps determine whether or not the data is usable. Prior to imputation, an ```original_length = len(temp_data)``` is stored, and after imputation, this is used in the line: ```ratio = original_length / len(temp_imputed)```. This value is printed during the imputation process and helps us visualize how much real vs fabricated data we are left with for each stock following imputation. 
 For example, if prior to imputation, a stock has 10 rows of data, but after imputation, it has 100, we would have a ratio of ```0.1```. This tells us that the stock data is mostly fabricated and therefore may lead to overfitting contamination. Conversely, a stock with 95 rows prior and 100 rows post will have a ratio of ```0.95```. By setting ```dropout_threshold=0.7``` for instance, we would remove all stocks with ratios less than 0.7 from our imputed database.
 
@@ -179,7 +179,7 @@ on our model object, which calls several functions under the hood from our **Mod
     4. Fits the model and saves weights as "lstm_model.h5" to local directory
 3. **load_data(self):** With the stored filepath, opens the db and saves the list of unique tickers to **self.tickers** and returns the dataframe.
 3. **prepare_data(self, df, time_step=78):** Scales each feature of each stock separately and returns sequenced scaled data.
-5. **create_model(self, input_shape:**: Creates a standard Tensorflow LSTM Sequential model, hyperparameters and layers customizeable here. Returns model.
+5. **create_model(self, input_shape:** Creates a standard Tensorflow LSTM Sequential model, hyperparameters and layers customizeable here. Returns model.
 
 
 ## Predicting
