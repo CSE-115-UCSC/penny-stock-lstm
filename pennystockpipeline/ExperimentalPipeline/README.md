@@ -22,7 +22,7 @@ alpha_vantage_key = ""
 ## Gathering list of tickers
 ### StockData.py/Tickers(StockData)
 
-To gather stock tickers efficiently, there is class StockData with an associated method Tickers(). An example of its use appears as such:
+To gather stock tickers efficiently, there is class a StockData with an associated sublcass Tickers(). An example of its instantiation appears as such:
 ```
 penny_stock_tickers = StockData.Tickers(polygon_key=polygon_key, 
                     finnhub_key=finnhub_key,
