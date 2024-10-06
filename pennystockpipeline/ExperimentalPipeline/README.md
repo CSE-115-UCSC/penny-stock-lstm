@@ -75,7 +75,7 @@ print(penny_stock_tickers)
 
 
 ### Gathering
-Now, to gather historical data from Polygon.io's records, call the function
+Now, to gather historical data from Polygon.io's records, instantiate the object and call the function
 ```
 penny_stock_historical_data = StockData.Historical(
         api="polygon", 
@@ -83,6 +83,8 @@ penny_stock_historical_data = StockData.Historical(
         tickers=penny_stock_tickers.tickers, 
         start_date='2023-01-01', end_date='2024-01-01'
 )
+
+penny_stock_historical_data.gather_historical(extra_hours=False)
 ```
 There are several parameters to allow you to customize the data you will receive:
 1. **API**: Right now, only Polygon is functional
