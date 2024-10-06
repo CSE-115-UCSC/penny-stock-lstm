@@ -98,7 +98,7 @@ Specifically, the data gathered is from the hours 9:30 - 16:00 at intervals of 5
 
 Additionally, a flag 
 ```
-after_hours=True
+extra_hours=True
 ```
 can be passed to gather data in hours outside of 9:30 - 16:00, but I advise leaving it False, as sequence lengths often should be the same when it comes to training. 
 
@@ -111,7 +111,7 @@ where it will output each {ticker}.csv file. Once this is complete, the function
 ```
 penny_stock_historical_data.to_sql()
 ```
-is called to combine each individual {ticker}.csv into a single **stockdata.csv** and a corresponding **stockdata.db**, both also within the ~/historical_data/ directories.
+is called to combine each individual {ticker}.csv into a single **stockdata.csv** and a corresponding **stockdata.db**, both also within the ~historical_data/ directory.
 
 ## Imputing the data
 To help ensure effective training, I've added an imputation function with a variety of customizable parameters for ease of use. Observing the function:
@@ -121,6 +121,8 @@ penny_stock_historical_data.impute(
         fill="forward", 
         dropout_threshold=0.65)
 ```
+Note: This function looks for a file named ~/historical_data/stockdata.db to perform the imputation on
+
 1. **amount**: This parameter can take two forms, each with their own pros/cons, though I recommend "day".
     1. **day**: The function will comb over the entire joined dataset and look for every day that has at least one data-point. For each of those days, data is imputed from 9:30 - 16:00 **of that day only**. In turn, we are left with less fabricated data in the end, as days that initially had 0 data still have 0 data. It is important to know that using "day" will result in a smaller **ratio** (see below) on average for each stock, as it "plays to each of their strengths".
     2. **complete**: The function will comb over the entire joined dataset and impute-to-fill **every day** for the entire historical period (year). In turn, every stock has the same *amount* of data (by rows), but stocks that are more spotty will have more fabricated than actual data.
@@ -129,19 +131,16 @@ penny_stock_historical_data.impute(
     2. **interpolate_linear**: Connects both sides of each gaps with a linear sequence of datapoints.
     3. **interpolate_polynomial**: More realistic than linear as they are connected with a polynomial curve
     4. **rolling**: Similar to forward, but takes the average of the the last known and next known data point. Will be implemented soon.
-3. **dropout_threshold**: I would argue this is the most important parameter to monitor. Within the ```Historical.impute_data()```, I store a  **ratio** for each stock, which helps determine whether or not the data is usable. Prior to imputation, an ```original_length = len(temp_data)``` is stored, and after imputation, this is used in the line: ```ratio = original_length / len(temp_imputed)```. This value is printed during the imputation process and helps us visualize how much real vs fabricated data we are left with for each stock following imputation. 
-For example, if prior to imputation, a stock has 10 rows of data, but after imputation, it has 100, we would have a ratio of ```0.1```. This tells us that the stock data is mostly fabricated and therefore may lead to overfitting contamination. Conversely, a stock with 95 rows prior and 100 rows post will have a ratio of ```0.95```. By setting ```dropout_threshold=0.7``` for instance, we would remove all stocks with ratios less than 0.7 from our imputed database.
+3. **dropout_threshold**: I would argue this is the most important parameter to monitor. Within the ```Historical.impute_data()```, I store a  **ratio** for each stock, which helps determine whether or not the data is usable. Prior to imputation, an ```original_length = len(temp_data)``` is stored, and after imputation, this is used in the line: ```ratio = original_length / len(temp_imputed)```. This value is printed during the imputation process and helps us visualize how much real vs fabricated data we are left with for each stock following imputation. For example, if prior to imputation a stock has 10 rows of data, but after imputation it has 100, the resulting ratio for that stock will be ```0.1```. This tells us that the stock data is mostly fabricated and therefore may lead to overfitting or other issues. Conversely, a stock with 95 rows prior and 100 rows post will have a ratio of ```0.95```. By setting ```dropout_threshold=0.7``` for instance, we would remove all stocks with ratios less than 0.7 from our imputed database.
 
-After ```penny_stock_historical.impute()``` is called, you will find new files
+After ```penny_stock_historical.impute()``` is called, you will find these two new files within your ~historical_data/ directory:
 1. stockdata_imputed.db
 2. stockdata_imputed.csv
-
-within your ~/historical_data/ directory.
 
 ---
 # model_training.ipynb
 
-With the imputed dataset now formed, we will perform several pre-processing methods on it to prepare for use in training a model. Please note that the methods used will now vary depending on what model you intend to use. For the methods listed below, they are currently intended for LSTM use.
+With the imputed dataset now formed, we will now perform several pre-processing methods on it to prepare for use in training a model. Please note that the methods listed will now vary depending on what model you intend to use. For the methods listed below, they are currently intended for LSTM use.
 
 ## Preprocessing: Additional Features
 
@@ -169,7 +168,7 @@ Using the initial columns we obtained from Polygon.io
 | 1/3/23 9:30 | 45.11 | 45.12 | 44.9 | 44.9 |   | AA | 1.67277E+12 | 371 | 19714 | 44.994 |
 
 We can optionally derive new features such as drift, volatility, moving_avg, momentum, and more to describe trends in the data. They likely will not be used by all models, so please toggle them on or off depending on your specific needs.
-Regardless of if/how the columns are changed, 2 new files will be added to your ~/historical_data directory to reflect:
+Regardless of if/how the columns are changed, two new files will be added to your ~historical_data/ directory:
 1. sd_pre.db
 2. sd_pre.csv
 
@@ -177,7 +176,7 @@ Regardless of if/how the columns are changed, 2 new files will be added to your 
 
 ## Preprocessing (Sequencing & Normalization) -> Training 
 
-With out last changes to the database being made, we are ready to prepare the data to be fed into our mode. By calling
+With the last changes to the database file being made, all that's left is to form normalized sequences to be passed into the model. By calling
 ```
 model = Model.StockLSTMModel('historical_data/sd_pre.db')
 ```
