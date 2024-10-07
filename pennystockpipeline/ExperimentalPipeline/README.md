@@ -5,7 +5,7 @@ As I've been experimenting with different data sources and features, I've put to
 There are several key parts to the pipeline, split amongst various files:
 1. **create_database.ipynb** -  *Deals with compiling together a list of tickers, gathering historical data, imputing the data, and saving to a local database file.*
     1. **StockData.py** - *Classes/methods to support create_database.ipynb*
-3. **model_training.ipynb**
+3. **model_training.ipynb** - *Deals with deriving new columns, normalizing data, forming sequences, and training the model*
     1. **Preprocessor.py** - *Classes/methods to support model_training.ipynb*
     2. **Model.py** - *Classes/methods to support model_training.ipynb*
 
@@ -38,7 +38,7 @@ alpha_vantage_key = ""
 ## Gathering list of tickers
 ### StockData.py/Tickers(StockData)
 
-To gather stock tickers efficiently, there is class a StockData with an associated sublcass Tickers(). An example of its instantiation appears as such:
+To gather stock tickers efficiently, there is the class ```StockData``` with an associated sublcass ```StockData.Tickers```. An example of its instantiation appears as such:
 ```
 penny_stock_tickers = StockData.Tickers(polygon_key=polygon_key, 
                     finnhub_key=finnhub_key,
@@ -51,19 +51,19 @@ penny_stock_tickers.get_tickers(amount=50)
 ```
 There are several parameters:
 1. **finhub_key**: 
-    - Used to gather a **quote** (see rank_by_volume() below, most recent close price of the stock), which is used in the method: *Stockdata.remove_non_penny_stocks()* to remove tickers with a most recent close price greater than a specified value.
+    - Used to gather a **quote** (```see rank_by_volume()``` below, most recent close price of the stock), which is used in the method: ```Stockdata.remove_non_penny_stocks()``` (this is performed within the ```.get_tickers(amount)``` method) to remove tickers with a most recent close price greater than a specified value.
     - This value is modifiable and can be found within Stockdata.py -> Stockdata() -> remove_non_penny_stocks -> "if last_close >5".
 2. **market**: All of the tickers are pulled from Polygon.io's database, and they have several thousand tickers from many markets. For OTC, use 'otc', and for NASDAQ, use 'stocks.'
 3. **stock_type**: Setting *stock_type='penny'* will trigger the function call self.remove_non_penny_stocks() during the ticker-gathering phase. Setting the type to anything else will ignore that function call.
 4. **rank_by_volume**: Gathering tickers from Polygon.io's database is a lengthy process, and I put this flag here with the intention of allowing you to grab the most 'active' stocks quickly. The reason it takes so long to gather tickers is because it must follow this process:
     1. Call Polygon.io to get a list of **all** tickers (Around 20,000). This is a one-time API call which is instantaneous, but lists all penny and non-penny stocks of the specified market.
     2. For each of these tickers, use Finnhub's API to get a **quote** of each ticker to discard/keep each ticker depending on whether or not it can be classified as a penny stock. Finnhub restricts to 60 API calls per minute, so getting a list of more than 60 tickers will take a small but non-zero amount of time. 
-    3. With the remaining penny stock tickers, which could be in the tens of thousands if you set the request amount that high, sort_by_volume() will do as such so that you don't have to waste time gathering historical data on tickers that have very spotty data.
+    3. With the remaining penny stock tickers, which could be in the tens of thousands if you set the request amount that high, ```sort_by_volume()``` (this is performed within the ```.get_tickers(amount)``` method) will do as such so that you don't have to waste time gathering historical data on tickers that have very spotty data.
     
 ## Gathering historical data
 ### StockData.py/Historical(StockData)
 
-Once an instance of **StockData.tickers** is created and the method *penny_stock_tickers.get_tickers(amount)* is ran, the list of all tickers will be stored in:
+Once an instance of the subclass **StockData.Tickers** is created and the method ```penny_stock_tickers.get_tickers(amount)``` is ran, the list of all tickers will be stored in:
 ```
 penny_stock_tickers.tickers
 ```
@@ -103,29 +103,33 @@ extra_hours=True
 can be passed to gather data in hours outside of 9:30 - 16:00, but I advise leaving it False, as sequence lengths often should be the same when it comes to training. 
 
 ## Saving the data
-**Imporant Note**: It should be noted that the above function will look for a directory within your pwd called 
+**Imporant Note**: It should be noted that the above function (```.gather_historical()```)will look for a directory within your pwd called 
 ```
 ~historical_data/
 ```
-where it will output each {ticker}.csv file. Once this is complete, the function
+where it will output each {ticker}.csv file. If that directory does not exist, please create it by running
+```
+mkdir historical_data
+```
+Once this is complete, the function
 ```
 penny_stock_historical_data.to_sql()
 ```
-is called to combine each individual {ticker}.csv into a single **stockdata.csv** and a corresponding **stockdata.db**, both also within the ~historical_data/ directory.
+is called to combine each individual {ticker}.csv into a single **stockdata.csv** and a corresponding **stockdata.db**, both also within the ```~historical_data/``` directory.
 
 ## Imputing the data
-To help ensure effective training, I've added an imputation function with a variety of customizable parameters for ease of use. Observing the function:
+To help ensure effective training, I've added an imputation function with a variety of customizable parameters for ease of use. Please observe the function:
 ```
 penny_stock_historical_data.impute(
         amount="day", 
         fill="forward", 
         dropout_threshold=0.65)
 ```
-Note: This function looks for a file named ~/historical_data/stockdata.db to perform the imputation on
+Note: This function looks for a file named ```~/historical_data/stockdata.db``` to perform the imputation on
 
 1. **amount**: This parameter can take two forms, each with their own pros/cons, though I recommend "day".
     1. **day**: The function will comb over the entire joined dataset and look for every day that has at least one data-point. For each of those days, data is imputed from 9:30 - 16:00 **of that day only**. In turn, we are left with less fabricated data in the end, as days that initially had 0 data still have 0 data. It is important to know that using "day" will result in a smaller **ratio** (see below) on average for each stock, as it "plays to each of their strengths".
-    2. **complete**: The function will comb over the entire joined dataset and impute-to-fill **every day** for the entire historical period (year). In turn, every stock has the same *amount* of data (by rows), but stocks that are more spotty will have more fabricated than actual data.
+    2. **complete**: The function will comb over the entire joined dataset and impute-to-fill **every day** for the entire historical period (year in our case), even days that initially have 0 data. In turn, every stock has the same *amount* of data (by rows), but stocks that are more spotty will have more fabricated than actual data.
 2. **fill**: Different methods of imputation are available, though, at the moment, forward is the only one I have working (interpolate_linear is close but I'm still getting it to work properly with all columns). Ideally, there will be several methods (not comprehensive):
     1. **forward**: Copies the last known data point forward until next real data point to fill the gaps, but leads to unnatural jumps and flat zones.
     2. **interpolate_linear**: Connects both sides of each gaps with a linear sequence of datapoints.
@@ -133,7 +137,7 @@ Note: This function looks for a file named ~/historical_data/stockdata.db to per
     4. **rolling**: Similar to forward, but takes the average of the the last known and next known data point. Will be implemented soon.
 3. **dropout_threshold**: I would argue this is the most important parameter to monitor. Within the ```Historical.impute_data()```, I store a  **ratio** for each stock, which helps determine whether or not the data is usable. Prior to imputation, an ```original_length = len(temp_data)``` is stored, and after imputation, this is used in the line: ```ratio = original_length / len(temp_imputed)```. This value is printed during the imputation process and helps us visualize how much real vs fabricated data we are left with for each stock following imputation. For example, if prior to imputation a stock has 10 rows of data, but after imputation it has 100, the resulting ratio for that stock will be ```0.1```. This tells us that the stock data is mostly fabricated and therefore may lead to overfitting or other issues. Conversely, a stock with 95 rows prior and 100 rows post will have a ratio of ```0.95```. By setting ```dropout_threshold=0.7``` for instance, we would remove all stocks with ratios less than 0.7 from our imputed database.
 
-After ```penny_stock_historical.impute()``` is called, you will find these two new files within your ~historical_data/ directory:
+After ```penny_stock_historical.impute()``` is called, you will find these two new files within your ```~historical_data/``` directory:
 1. stockdata_imputed.db
 2. stockdata_imputed.csv
 
@@ -145,7 +149,6 @@ With the imputed dataset now formed, we will now perform several pre-processing 
 ## Preprocessing: Additional Features
 
 ```
-import StockData
 import Preprocessor
 import Model
 ```
@@ -168,7 +171,7 @@ Using the initial columns we obtained from Polygon.io
 | 1/3/23 9:30 | 45.11 | 45.12 | 44.9 | 44.9 |   | AA | 1.67277E+12 | 371 | 19714 | 44.994 |
 
 We can optionally derive new features such as drift, volatility, moving_avg, momentum, and more to describe trends in the data. They likely will not be used by all models, so please toggle them on or off depending on your specific needs.
-Regardless of if/how the columns are changed, two new files will be added to your ~historical_data/ directory:
+Regardless of if/how the columns are changed, two new files will be added to your ```~historical_data/``` directory:
 1. sd_pre.db
 2. sd_pre.csv
 
