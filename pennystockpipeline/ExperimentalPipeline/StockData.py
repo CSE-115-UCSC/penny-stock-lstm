@@ -101,6 +101,7 @@ class Tickers(StockData):
         if self.rank_by_volume == True:
             self.volume_sort()
 
+
     def remove_non_penny_stocks(self):
         # Remove all non-penny stocks from self.tickers
         print(f"Removing all non-penny stocks from {len(self.tickers)} tickers. . .")
@@ -322,19 +323,21 @@ class Historical(StockData):
 
             # Read each CSV file and append DataFrame to list
             for filename in os.listdir(dr):
+                print(filename)
                 if filename.endswith('.csv'):
                     ticker = os.path.splitext(filename)[0]
                     file_path = os.path.join(dr, filename)
-                try:
-                    df = pd.read_csv(file_path)
-                    df['ticker'] = ticker
-                    dfs.append(df)
-                except FileNotFoundError:
-                    sys.stderr.write(f"File {file_path} not found.\n")
-                except pd.errors.EmptyDataError:
-                    sys.stderr.write(f"File {file_path} is empty.\n")
-                except Exception as e:
-                    sys.stderr.write(f"Failed to read {file_path}: {e}\n")
+                    try:
+                        df = pd.read_csv(file_path)
+                        df['ticker'] = ticker
+                        dfs.append(df)
+                    except FileNotFoundError:
+                        sys.stderr.write(f"File {file_path} not found.\n")
+                    except pd.errors.EmptyDataError:
+                        sys.stderr.write(f"File {file_path} is empty.\n")
+                    except Exception as e:
+                        sys.stderr.write(f"Failed to read {file_path}: {e}\n")
+
 
 
 
@@ -375,9 +378,6 @@ class Historical(StockData):
                 sqliteConnection.close()
                 print("SQLite connection closed.")
 
-
-
-    # To Do
     def impute(self, amount, fill, dropout_threshold=0):
 
         print("Beginning imputation of historical_data/stockdata.db. . .")
@@ -450,7 +450,9 @@ class Historical(StockData):
                 # Combine the time column with existing data
                 if len(temp_data) == 0:
                     continue
+                temp_data = temp_data[~temp_data.index.duplicated(keep='first')]
                 temp_imputed = merged_timeline.combine_first(temp_data)
+                # temp_imputed = pd.merge(merged_timeline, temp_data, left_index=True, right_index=True, how='left')
 
                 # Now, apply forward fill to the entire dataset
                 if fill == 'forward':
@@ -460,7 +462,6 @@ class Historical(StockData):
                     temp_imputed.interpolate(method='linear', inplace=True)
                 else:
                     raise ValueError("Unsupported interpolation method specified")
-
                 
                 ratio = original_length / len(temp_imputed)
                 ratios.append(ratio)
@@ -512,22 +513,3 @@ class Historical(StockData):
                 if conn:
                     conn.close()
                     print("    Debug: Imputed database connection closed.")
-                    
-'''Subclass preparing the stock data for model training
-
-Initialization Arguments: 
-    - filepath for stock data
-'''
-class Preprocessor(StockData):
-    def __init__(self, filepath):
-
-        sqliteConnection = sqlite3.connect(filepath)
-        cursor = sqliteConnection.cursor()
-        query = "SELECT * FROM stockdata_imputed;"
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        table_names = cursor.fetchall()
-        table_name = table_names[0][0]
-        query = f"SELECT * FROM {table_name};"
-        self.data = pd.read_sql_query(query, sqliteConnection)  
-
-
