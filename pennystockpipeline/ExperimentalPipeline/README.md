@@ -11,17 +11,7 @@ There are several key parts to the pipeline, split amongst various files:
 
 Some dependencies will be required to run each notebook, and they can be installed by running the following command:
 ```
-pip install pandas
-pip install polygon-api-client
-pip install finnhub-python
-pip install alpha_vantage
-pip install python-dateutil
-pip install openpyxl
-pip install yfinance
-pip install numpy
-pip install scikit-learn
-pip install tensorflow
-pip install pandas-ta
+pip install -r requirements.txt
 ```
 
 ---
