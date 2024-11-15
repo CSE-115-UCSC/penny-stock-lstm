@@ -9,7 +9,7 @@ There are several key parts to the pipeline, split amongst various files:
     1. **Preprocessor.py** - *Classes/methods to support model_training.ipynb*
     2. **Model.py** - *Classes/methods to support model_training.ipynb*
 
-Some dependencies will be required to run each notebook, and they can be installed by running the following command:
+Several dependencies will be required to run each notebook which can be installed to your local environment by running the following command:
 ```
 pip install -r requirements.txt
 ```
