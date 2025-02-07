@@ -7,11 +7,15 @@ from sklearn.preprocessing import MinMaxScaler
 
 class Preprocessor():
 
-    def __init__(self, db_filepath, drift=False, volatility=False, moving_avg=False, momentum=False, volume_features=False, support_resistance=False, bollinger_bands=False, z_score=False):
+    def __init__(self, db, path, drift=False, volatility=False, moving_avg=False, momentum=False, volume_features=False, support_resistance=False, bollinger_bands=False, z_score=False):
         # Load the data from the database
-        self.conn = sqlite3.connect(db_filepath)
-        self.df = pd.read_sql_query("SELECT * FROM stockdata_imputed", self.conn).drop(columns='otc')
-        
+        if path == "database":
+            self.conn = sqlite3.connect(db)
+            self.df = pd.read_sql_query("SELECT * FROM stockdata_imputed", self.conn).drop(columns='otc')
+            self.df = self.df[['close', 'transactions', 'volume', 'ticker']]
+        elif path == "dataframe":
+            self.df = db
+
         # Preprocess based on flags
         if drift:
             self.drift()
@@ -101,60 +105,50 @@ class Preprocessor():
             self.df.to_csv(f'historical_data/sd_pre.csv', index=False)
         conn.close()
     
-    def normalize(self):
-
-        time_step = 79
+    def normalize(self, time_step=79, max_output_horizon=78):
         self.scalers = {}
-
-        feature_columns = ['close', 'open', 'high', 'low', 'volume', 'vwap',
-                    'SMA_5', 'SMA_50', 'EMA_5', 'EMA_50', 'volume_change',
-                    'volume_sma_5', 'volume_sma_50', 'volume_oscillator',
-                    'transactions', 'log_return', 'drift', 'volatility',
-                    'RSI', 'MACD', 'MACD_signal', 'MACD_hist']
-        
-        # List to store prepared data
+        feature_columns = self.df.columns.to_list()
         X_all, y_all = [], []
 
         self.scaled_dataframe = pd.DataFrame(columns=feature_columns)
 
-        # Process each ticker individually
         for ticker in self.df['ticker'].unique():
-
             print(f"    Normalizing data for {ticker}. . .")
-            # Filter the data for the current ticker
+
             ticker_data = self.df[self.df['ticker'] == ticker].copy()
-            
-            # Initialize a MinMaxScaler for the current ticker and store it
             self.scalers[ticker] = {}
 
             scaled_features = []
-
-            # Scale each feature independently
             for feature in feature_columns:
-
-                if feature != 'pst' and feature != 'ticker':
+                if feature not in ['pst', 'ticker']:  
                     scaler = MinMaxScaler(feature_range=(0, 1))
                     ticker_data[feature] = scaler.fit_transform(ticker_data[feature].values.reshape(-1, 1))
-                    self.scalers[ticker][feature] = scaler  # Store the scaler for this feature
+                    self.scalers[ticker][feature] = scaler
                     
                 scaled_features.append(ticker_data[feature].values)
 
-            # Convert the scaled features into a numpy array
-            scaled_features = np.stack(scaled_features, axis=-1)  # Shape: (n_samples, n_features)
+            scaled_features = np.stack(scaled_features, axis=-1)
 
-            # Create time-step sequences
-            for i in range(time_step, len(scaled_features)):
+            # Create time-step sequences for X and y (multi-step forecasting)
+            for i in range(time_step, len(scaled_features) - max_output_horizon):
                 X_all.append(scaled_features[i-time_step:i])
-                y_all.append(ticker_data['close'].values[i])  # Use 'close' as the target for now
+
+                # Variable-length targets: future closing prices up to max_output_horizon
+                y_future = ticker_data['close'].values[i:i+max_output_horizon]  
+                y_all.append(np.pad(y_future, (0, max_output_horizon - len(y_future)), mode='constant', constant_values=np.nan))
 
             self.scaled_dataframe = pd.concat([self.scaled_dataframe, ticker_data], axis=0, ignore_index=True)
 
-        # Save as new database
         conn = sqlite3.connect('historical_data/sd_pre_n.db')
         self.scaled_dataframe.to_sql('sd_pre_n', conn, if_exists='replace', index=False)
         self.scaled_dataframe.to_csv('historical_data/sd_pre_n.csv', index=False)
 
-        
         self.X = np.array(X_all)
+        self.X = np.array([row[:, :-1] for row in self.X], dtype=np.float32)
+
         self.y = np.array(y_all)
+        self.y = np.array(self.y, dtype=np.float32)
+
+        print(f"Final Shapes: X={self.X.shape}, y={self.y.shape}")
+        
         return self.scaled_dataframe, self.X, self.y
